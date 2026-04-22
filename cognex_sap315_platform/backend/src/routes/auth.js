@@ -1,0 +1,10 @@
+const express = require('express');
+const router = express.Router();
+const authController = require('../controllers/authController');
+const { verificarToken } = require('../middleware/auth');
+
+router.post('/login', authController.login);
+router.post('/registrar', verificarToken, authController.registrar);
+router.post('/logout', verificarToken, authController.logout);
+
+module.exports = router;
