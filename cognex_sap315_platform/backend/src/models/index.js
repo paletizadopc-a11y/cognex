@@ -73,8 +73,8 @@ const SessionLogin = sequelize.define('sessions_login', {
 }, { timestamps: false });
 
 // Relaciones
-Usuario.belongsTo(Rol, { foreignKey: 'rol_id' });
-Rol.hasMany(Usuario, { foreignKey: 'rol_id' });
+Usuario.belongsTo(Rol, { foreignKey: 'rol_id', as: 'rol' });
+Rol.hasMany(Usuario, { foreignKey: 'rol_id', as: 'usuarios' });
 
 Lectura.belongsTo(ConfigCamara, { foreignKey: 'camara_id' });
 Lectura.belongsTo(Usuario, { foreignKey: 'usuario_validador_id', as: 'validador' });

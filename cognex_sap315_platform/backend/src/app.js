@@ -19,13 +19,18 @@ app.use(cors({
   credentials: true
 }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: 'Demasiadas peticiones, intente más tarde'
+// Rate limiting - Separado para Auth y Hardware
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, 
+  max: 100, 
+  message: 'Demasiados intentos de login, intente más tarde'
 });
-app.use('/api/', limiter);
+
+const apiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, 
+  max: 5000, 
+  message: 'Límite de peticiones de hardware excedido'
+});
 
 // Logging
 app.use(morgan(process.env.LOG_LEVEL || 'dev'));
@@ -34,9 +39,9 @@ app.use(morgan(process.env.LOG_LEVEL || 'dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Rutas
-app.use(`/api/${process.env.API_VERSION || 'v1'}/auth`, authRoutes);
-app.use(`/api/${process.env.API_VERSION || 'v1'}/lecturas`, lecturasRoutes);
+// Rutas aplicando los limitadores específicos
+app.use(`/api/${process.env.API_VERSION || 'v1'}/auth`, authLimiter, authRoutes);
+app.use(`/api/${process.env.API_VERSION || 'v1'}/lecturas`, apiLimiter, lecturasRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

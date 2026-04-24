@@ -1,88 +1,65 @@
-import { useState, useEffect, useCallback } from 'react';
+// src/modules/dashboard/hooks/useDashboard.js
+import { useState, useEffect } from 'react';
+import { api } from '../../../shared/services/api';
 
-const generateMockLectura = () => {
-  const codigos = ['SAP315-001', 'SAP315-002', 'ABC123456', 'XYZ789012', 'TEST001', 'ERROR-CODE'];
-  const estados = ['pendiente', 'validado', 'rechazado', 'error'];
-  const lineas = ['LINEA_01', 'LINEA_02', 'LINEA_03'];
-  const camaras = ['CAMARA_01', 'CAMARA_02'];
-
-  return {
-    id: Math.floor(Math.random() * 10000),
-    codigo_etiqueta: codigos[Math.floor(Math.random() * codigos.length)],
-    fecha_hora: new Date().toISOString(),
-    estado_sap: estados[Math.floor(Math.random() * estados.length)],
-    linea_origen: lineas[Math.floor(Math.random() * lineas.length)],
-    camara_id: camaras[Math.floor(Math.random() * camaras.length)],
-    resultado: 'OK',
-    confianza: (Math.random() * 100).toFixed(2),
-  };
-};
-
-export const useDashboard = (activo = true, intervalo = 3000) => {
-  const [lecturas, setLecturas] = useState([]);
-  const [alertas, setAlertas] = useState([]);
-  const [kpis, setKpis] = useState({
-    totalHoy: 0,
-    validadas: 0,
-    rechazadas: 0,
-    errores: 0,
-    eficiencia: 0,
-    promedioConfianza: 0,
+export const useDashboard = () => {
+  const [data, setData] = useState({
+    lecturas: [],
+    alertas: [],
+    kpis: {
+      totalHoy: 0,
+      validadas: 0,
+      rechazadas: 0,
+      errores: 0,
+      eficiencia: 0
+    }
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const calcularKpis = useCallback((lista) => {
-    const total = lista.length;
-    const validadas = lista.filter(l => l.estado_sap === 'validado').length;
-    const rechazadas = lista.filter(l => l.estado_sap === 'rechazado').length;
-    const errores = lista.filter(l => l.estado_sap === 'error').length;
-    const confianzas = lista.map(l => parseFloat(l.confianza));
-    const promedioConfianza = confianzas.length > 0 
-      ? (confianzas.reduce((a, b) => a + b, 0) / confianzas.length).toFixed(1)
-      : 0;
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      
+      // Ejecutamos las peticiones en paralelo para mayor velocidad
+      const [lecturasRes] = await Promise.all([
+        api.get('/lecturas?limite=10'),
+        // Aquí agregarías la llamada a las alertas cuando el endpoint exista:
+        // api.get('/alertas?estado=activas') 
+      ]);
 
-    return {
-      totalHoy: total,
-      validadas,
-      rechazadas,
-      errores,
-      eficiencia: total > 0 ? ((validadas / total) * 100).toFixed(1) : 0,
-      promedioConfianza,
-    };
-  }, []);
+      // Calculamos los KPIs basándonos en los datos reales
+      // (En producción, esto idealmente lo calcularía un endpoint /kpis en el backend)
+      const lecturas = lecturasRes.lecturas || [];
+      const validadas = lecturas.filter(l => l.estado_sap === 'validado').length;
+      const total = lecturas.length;
+      
+      setData({
+        lecturas: lecturas,
+        alertas: [], // Reemplazar con la respuesta real de alertas
+        kpis: {
+          totalHoy: total,
+          validadas: validadas,
+          rechazadas: lecturas.filter(l => l.estado_sap === 'rechazado').length,
+          errores: lecturas.filter(l => l.estado_sap === 'error').length,
+          eficiencia: total > 0 ? Math.round((validadas / total) * 100) : 0
+        }
+      });
+      setError(null);
+    } catch (err) {
+      setError(err.message || 'Error al conectar con el servidor Cognex');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (!activo) return;
-
-    // Datos iniciales
-    const iniciales = Array.from({ length: 15 }, generateMockLectura);
-    setLecturas(iniciales);
-    setKpis(calcularKpis(iniciales));
-    setLoading(false);
-
-    const interval = setInterval(() => {
-      const nueva = generateMockLectura();
-      
-      setLecturas(prev => {
-        const actualizadas = [nueva, ...prev].slice(0, 50);
-        setKpis(calcularKpis(actualizadas));
-        return actualizadas;
-      });
-
-      if (nueva.estado_sap === 'error') {
-        setAlertas(prev => [{
-          id: Date.now(),
-          tipo: 'error_lectura',
-          descripcion: `Error en lectura: ${nueva.codigo_etiqueta}`,
-          severidad: 'alta',
-          fecha_registro: new Date().toISOString(),
-          resuelta: false,
-        }, ...prev].slice(0, 20));
-      }
-    }, intervalo);
-
+    fetchDashboardData();
+    
+    // Opcional: Refresco automático cada 30 segundos (ideal para plantas operativas)
+    const interval = setInterval(fetchDashboardData, 30000);
     return () => clearInterval(interval);
-  }, [activo, intervalo, calcularKpis]);
+  }, []);
 
-  return { lecturas, alertas, kpis, loading };
+  return { ...data, loading, error, refetch: fetchDashboardData };
 };
