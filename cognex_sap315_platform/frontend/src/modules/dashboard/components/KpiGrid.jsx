@@ -1,10 +1,11 @@
 import React from 'react';
-import { Activity, CheckCircle, XCircle, BarChart3, Target } from 'lucide-react';
+import { Activity, CheckCircle, XCircle, BarChart3, Target, Clock } from 'lucide-react';
 import { KpiCard } from './KpiCard';
 
 export const KpiGrid = ({ kpis }) => {
+  // Ajustamos a 6 columnas en pantallas grandes (xl:grid-cols-6) para que quepan todas las métricas
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+    <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
       <KpiCard
         titulo="Total Lecturas"
         valor={kpis.totalHoy}
@@ -22,11 +23,18 @@ export const KpiGrid = ({ kpis }) => {
         tendencia={8}
       />
       <KpiCard
+        titulo="Pendientes"
+        valor={kpis.pendientes}
+        subtitulo="Esperando acción"
+        icono={Clock}
+        color="amber"
+      />
+      <KpiCard
         titulo="Rechazadas"
         valor={kpis.rechazadas}
         subtitulo="Requieren revisión"
         icono={XCircle}
-        color="amber"
+        color="rose"
         tendencia={-5}
       />
       <KpiCard

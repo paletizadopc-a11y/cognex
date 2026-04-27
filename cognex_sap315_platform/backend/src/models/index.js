@@ -19,9 +19,11 @@ const Usuario = sequelize.define('usuarios', {
   fecha_actualizacion: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 }, { timestamps: false });
 
+// 🚀 MODELO LECTURA ACTUALIZADO CON LPN
 const Lectura = sequelize.define('lecturas', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   codigo_etiqueta: { type: DataTypes.STRING(255), allowNull: false },
+  lpn: { type: DataTypes.STRING(100), allowNull: true },
   fecha_hora: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
   estado_sap: { type: DataTypes.STRING(20), defaultValue: 'pendiente' },
   linea_origen: DataTypes.STRING(50),

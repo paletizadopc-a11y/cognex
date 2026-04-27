@@ -9,6 +9,9 @@ import { Layout } from './shared/components/Layout';
 import { DashboardModule } from './modules/dashboard/DashboardModule';
 import { LoginModule } from './modules/auth/LoginModule';
 
+// Importamos el nuevo módulo de Historial de Lecturas
+import { LecturasModule } from './modules/lecturas/LecturasModule';
+
 // Wrapper para proteger las rutas privadas
 const RutaProtegida = () => {
   const { isAuthenticated, loading } = useAuth();
@@ -51,12 +54,8 @@ function App() {
               {/* Al entrar a la raíz "/", carga el dashboard */}
               <Route path="/" element={<DashboardModule />} />
               
-              <Route path="/lecturas" element={
-                <div className="p-6 text-[#555555]">
-                  <h2 className="font-inter font-bold text-xl mb-4 text-[#4A008B]">Módulo de Lecturas</h2>
-                  <p>En desarrollo - Conexión API pendiente</p>
-                </div>
-              } />
+              {/* Nueva ruta real conectada al módulo de Lecturas */}
+              <Route path="/lecturas" element={<LecturasModule />} />
               
               <Route path="/alertas" element={
                 <div className="p-6 text-[#555555]">

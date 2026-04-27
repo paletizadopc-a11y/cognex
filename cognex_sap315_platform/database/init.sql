@@ -1,3 +1,4 @@
+-- Si la base de datos ya existe, debes eliminarla manualmente antes de correr este script
 CREATE DATABASE cognex_sap315_db;
 \c cognex_sap315_db;
 
@@ -41,6 +42,7 @@ CREATE TABLE configuracion_camaras (
 CREATE TABLE lecturas (
     id SERIAL PRIMARY KEY,
     codigo_etiqueta VARCHAR(255) NOT NULL,
+    lpn VARCHAR(100), -- NUEVO CAMPO LPN AGREGADO AQUI
     fecha_hora TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     estado_sap VARCHAR(20) DEFAULT 'pendiente',
     linea_origen VARCHAR(50),

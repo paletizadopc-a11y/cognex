@@ -1,4 +1,3 @@
-// src/modules/dashboard/hooks/useDashboard.js
 import { useState, useEffect } from 'react';
 import { api } from '../../../shared/services/api';
 
@@ -9,6 +8,7 @@ export const useDashboard = () => {
     kpis: {
       totalHoy: 0,
       validadas: 0,
+      pendientes: 0, // Nueva métrica agregada
       rechazadas: 0,
       errores: 0,
       eficiencia: 0
@@ -19,35 +19,38 @@ export const useDashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      setLoading(true);
-      
-      // Ejecutamos las peticiones en paralelo para mayor velocidad
-      const [lecturasRes] = await Promise.all([
+      // Hacemos dos peticiones simultáneas usando Promise.all para no perder velocidad
+      const [tablaRes, kpisRes] = await Promise.all([
         api.get('/lecturas?limite=10'),
-        // Aquí agregarías la llamada a las alertas cuando el endpoint exista:
-        // api.get('/alertas?estado=activas') 
+        api.get('/lecturas?limite=10000')
       ]);
 
-      // Calculamos los KPIs basándonos en los datos reales
-      // (En producción, esto idealmente lo calcularía un endpoint /kpis en el backend)
-      const lecturas = lecturasRes.lecturas || [];
-      const validadas = lecturas.filter(l => l.estado_sap === 'validado').length;
-      const total = lecturas.length;
-      
+      const lecturasTabla = tablaRes.lecturas || [];
+      const lecturasTurno = kpisRes.lecturas || [];
+
+      // Calculamos los KPIs basándonos en la lista COMPLETA del turno
+      const validadas = lecturasTurno.filter(l => l.estado_sap === 'validado').length;
+      const pendientes = lecturasTurno.filter(l => l.estado_sap === 'pendiente').length; // Conteo de pendientes
+      const rechazadas = lecturasTurno.filter(l => l.estado_sap === 'rechazado').length;
+      const errores = lecturasTurno.filter(l => l.estado_sap === 'error').length;
+      const total = kpisRes.total || lecturasTurno.length;
+
       setData({
-        lecturas: lecturas,
-        alertas: [], // Reemplazar con la respuesta real de alertas
+        lecturas: lecturasTabla,
+        alertas: [], 
         kpis: {
           totalHoy: total,
-          validadas: validadas,
-          rechazadas: lecturas.filter(l => l.estado_sap === 'rechazado').length,
-          errores: lecturas.filter(l => l.estado_sap === 'error').length,
+          validadas,
+          pendientes, // Inyectamos pendientes al objeto
+          rechazadas,
+          errores,
           eficiencia: total > 0 ? Math.round((validadas / total) * 100) : 0
         }
       });
       setError(null);
     } catch (err) {
-      setError(err.message || 'Error al conectar con el servidor Cognex');
+      console.error(err);
+      setError('No se pudieron cargar los datos de la planta.');
     } finally {
       setLoading(false);
     }
@@ -55,9 +58,7 @@ export const useDashboard = () => {
 
   useEffect(() => {
     fetchDashboardData();
-    
-    // Opcional: Refresco automático cada 30 segundos (ideal para plantas operativas)
-    const interval = setInterval(fetchDashboardData, 30000);
+    const interval = setInterval(fetchDashboardData, 15000);
     return () => clearInterval(interval);
   }, []);
 
