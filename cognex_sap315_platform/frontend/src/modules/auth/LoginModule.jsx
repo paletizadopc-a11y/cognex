@@ -51,7 +51,7 @@ export const LoginModule = () => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-[#4A008B] outline-none transition-all"
-              placeholder="usuario@softys.com"
+              placeholder="usuario@softysla.com"
               required
             />
           </div>

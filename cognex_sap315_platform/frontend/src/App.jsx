@@ -9,8 +9,14 @@ import { Layout } from './shared/components/Layout';
 import { DashboardModule } from './modules/dashboard/DashboardModule';
 import { LoginModule } from './modules/auth/LoginModule';
 
-// Importamos el nuevo módulo de Historial de Lecturas
+// Importamos el módulo de Historial de Lecturas
 import { LecturasModule } from './modules/lecturas/LecturasModule';
+
+// Importamos el módulo del Monitor en Vivo
+import { MonitorModule } from './modules/monitor/MonitorModule';
+
+// 🚀 NUEVO: Importamos el módulo de Configuración
+import { ConfiguracionModule } from './modules/configuracion/ConfiguracionModule';
 
 // Wrapper para proteger las rutas privadas
 const RutaProtegida = () => {
@@ -54,19 +60,18 @@ function App() {
               {/* Al entrar a la raíz "/", carga el dashboard */}
               <Route path="/" element={<DashboardModule />} />
               
-              {/* Nueva ruta real conectada al módulo de Lecturas */}
+              {/* Ruta conectada al módulo de Lecturas */}
               <Route path="/lecturas" element={<LecturasModule />} />
+
+              {/* Ruta conectada al Monitor en Vivo */}
+              <Route path="/monitor" element={<MonitorModule />} />
+              
+              {/* 🚀 RUTA ACTUALIZADA: Configuración */}
+              <Route path="/configuracion" element={<ConfiguracionModule />} />
               
               <Route path="/alertas" element={
                 <div className="p-6 text-[#555555]">
                   <h2 className="font-inter font-bold text-xl mb-4 text-[#4A008B]">Módulo de Alertas</h2>
-                  <p>En desarrollo</p>
-                </div>
-              } />
-              
-              <Route path="/configuracion" element={
-                <div className="p-6 text-[#555555]">
-                  <h2 className="font-inter font-bold text-xl mb-4 text-[#4A008B]">Configuración del Sistema</h2>
                   <p>En desarrollo</p>
                 </div>
               } />

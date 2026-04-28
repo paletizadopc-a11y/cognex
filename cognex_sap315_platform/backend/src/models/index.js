@@ -19,41 +19,32 @@ const Usuario = sequelize.define('usuarios', {
   fecha_actualizacion: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 }, { timestamps: false });
 
-// 🚀 MODELO LECTURA ACTUALIZADO CON LPN
 const Lectura = sequelize.define('lecturas', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   codigo_etiqueta: { type: DataTypes.STRING(255), allowNull: false },
   lpn: { type: DataTypes.STRING(100), allowNull: true },
-  fecha_hora: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+  fecha_hora: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
   estado_sap: { type: DataTypes.STRING(20), defaultValue: 'pendiente' },
   linea_origen: DataTypes.STRING(50),
-  resultado: DataTypes.STRING(50),
+  camara_id: DataTypes.INTEGER,
+  resultado: DataTypes.JSONB,
   confianza: DataTypes.DECIMAL(5, 2),
+  observacion: DataTypes.TEXT,
   metadata_lectura: { type: DataTypes.JSONB, defaultValue: {} }
-}, { timestamps: true, createdAt: 'created_at', updatedAt: false });
+}, { timestamps: false });
 
-const LogAlerta = sequelize.define('logs_alertas', {
+const LogAlerta = sequelize.define('log_alertas', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  lectura_id: DataTypes.INTEGER,
   tipo_alerta: { type: DataTypes.STRING(50), allowNull: false },
-  descripcion: { type: DataTypes.TEXT, allowNull: false },
-  fecha_registro: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  severidad: { type: DataTypes.STRING(20), defaultValue: 'media' },
+  descripcion: DataTypes.TEXT,
+  fecha_hora: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
   resuelta: { type: DataTypes.BOOLEAN, defaultValue: false },
+  resuelta_por: DataTypes.INTEGER,
   fecha_resolucion: DataTypes.DATE
 }, { timestamps: false });
 
-const EvidenciaImagen = sequelize.define('evidencias_imagenes', {
-  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  ruta_archivo: { type: DataTypes.STRING(500), allowNull: false },
-  nombre_archivo: DataTypes.STRING(255),
-  tamano_bytes: DataTypes.INTEGER,
-  formato: DataTypes.STRING(10),
-  fecha_captura: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  observacion: DataTypes.TEXT,
-  hash_sha256: DataTypes.STRING(64)
-}, { timestamps: false });
-
-const ConfigCamara = sequelize.define('configuracion_camaras', {
+const ConfigCamara = sequelize.define('config_camaras', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   nombre_camara: { type: DataTypes.STRING(100), allowNull: false },
   ip: { type: DataTypes.STRING(15), allowNull: false },
@@ -82,11 +73,7 @@ Lectura.belongsTo(ConfigCamara, { foreignKey: 'camara_id' });
 Lectura.belongsTo(Usuario, { foreignKey: 'usuario_validador_id', as: 'validador' });
 
 LogAlerta.belongsTo(Lectura, { foreignKey: 'lectura_id' });
-LogAlerta.belongsTo(Usuario, { foreignKey: 'resuelta_por' });
-
-EvidenciaImagen.belongsTo(Lectura, { foreignKey: 'lectura_id' });
-
-SessionLogin.belongsTo(Usuario, { foreignKey: 'usuario_id' });
+LogAlerta.belongsTo(Usuario, { foreignKey: 'resuelta_por', as: 'resolutor' });
 
 module.exports = {
   sequelize,
@@ -94,7 +81,6 @@ module.exports = {
   Usuario,
   Lectura,
   LogAlerta,
-  EvidenciaImagen,
   ConfigCamara,
   SessionLogin
 };

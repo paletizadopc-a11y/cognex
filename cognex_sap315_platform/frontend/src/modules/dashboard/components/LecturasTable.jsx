@@ -16,7 +16,7 @@ export const LecturasTable = ({ lecturas }) => {
           <thead className="bg-gray-50">
             <tr className="text-xs font-inter font-semibold text-[#555555] uppercase tracking-wider border-b border-gray-100">
               <th className="p-4">Código SAP</th>
-              <th className="p-4">LPN</th> {/* <-- NUEVA COLUMNA LPN */}
+              <th className="p-4">LPN</th>
               <th className="p-4">Estado</th>
               <th className="p-4">Línea</th>
               <th className="p-4">Cámara</th>
@@ -34,41 +34,34 @@ export const LecturasTable = ({ lecturas }) => {
             ) : (
               lecturas.map((lectura) => (
                 <tr key={lectura.id} className="hover:bg-gray-50/50 transition-colors">
-                  {/* Código de caja */}
                   <td className="p-4 font-mono text-sm font-bold text-[#38006B]">
                     {lectura.codigo_etiqueta}
                   </td>
                   
-                  {/* LPN / Pallet */}
                   <td className="p-4">
                     <span className="px-2 py-1 bg-gray-100 text-[#555555] rounded text-xs font-mono border border-gray-200">
                       {lectura.lpn || 'N/A'}
                     </span>
                   </td>
 
-                  {/* Estado con el Badge */}
                   <td className="p-4">
                     <Badge variant={lectura.estado_sap}>{lectura.estado_sap}</Badge>
                   </td>
                   
-                  {/* Línea */}
                   <td className="p-4 text-sm text-[#555555]">
                     {lectura.linea_origen}
                   </td>
                   
-                  {/* Cámara */}
                   <td className="p-4 text-sm text-[#555555]">
                     Cam {lectura.camara_id}
                   </td>
                   
-                  {/* Confianza (Cambia de color según el porcentaje) */}
                   <td className="p-4">
                     <span className={`text-sm font-bold ${lectura.confianza > 80 ? 'text-[#0AE8C6]' : lectura.confianza > 65 ? 'text-amber-500' : 'text-red-500'}`}>
                       {lectura.confianza}%
                     </span>
                   </td>
                   
-                  {/* Hora (Formateada solo a HH:MM:SS para ahorrar espacio) */}
                   <td className="p-4 text-xs text-gray-400 font-medium">
                     {new Date(lectura.fecha_hora).toLocaleTimeString()}
                   </td>

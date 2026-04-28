@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 const { sequelize } = require('./models');
 const authRoutes = require('./routes/auth');
 const lecturasRoutes = require('./routes/lecturas');
+const usuariosRoutes = require('./routes/usuariosRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,7 +20,7 @@ app.use(cors({
   credentials: true
 }));
 
-// Rate limiting - Separado para Auth y Hardware
+// Rate limiting
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
   max: 100, 
@@ -29,34 +30,27 @@ const authLimiter = rateLimit({
 const apiLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, 
   max: 5000, 
-  message: 'Límite de peticiones de hardware excedido'
+  message: 'Límite de peticiones excedido'
 });
 
-// Logging
 app.use(morgan(process.env.LOG_LEVEL || 'dev'));
-
-// Body parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Rutas aplicando los limitadores específicos
+// Rutas
 app.use(`/api/${process.env.API_VERSION || 'v1'}/auth`, authLimiter, authRoutes);
 app.use(`/api/${process.env.API_VERSION || 'v1'}/lecturas`, apiLimiter, lecturasRoutes);
+app.use(`/api/${process.env.API_VERSION || 'v1'}`, usuariosRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// Error handler
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Error interno del servidor' });
-});
-
 // Sincronizar DB y arrancar
-sequelize.sync({ alter: true }).then(() => {
-  console.log('✅ Base de datos sincronizada');
+// 🚀 Usamos sync() normal ya que la columna 'activo' ya fue creada manualmente
+sequelize.sync().then(() => {
+  console.log('✅ Base de datos conectada y sincronizada');
   app.listen(PORT, () => {
     console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
   });
