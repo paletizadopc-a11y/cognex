@@ -15,8 +15,11 @@ import { LecturasModule } from './modules/lecturas/LecturasModule';
 // Importamos el módulo del Monitor en Vivo
 import { MonitorModule } from './modules/monitor/MonitorModule';
 
-// 🚀 NUEVO: Importamos el módulo de Configuración
+// Importamos el módulo de Configuración
 import { ConfiguracionModule } from './modules/configuracion/ConfiguracionModule';
+
+// 🚀 NUEVO: Importamos el módulo de Alertas
+import { AlertasModule } from './modules/alertas/AlertasModule';
 
 // Wrapper para proteger las rutas privadas
 const RutaProtegida = () => {
@@ -66,15 +69,11 @@ function App() {
               {/* Ruta conectada al Monitor en Vivo */}
               <Route path="/monitor" element={<MonitorModule />} />
               
-              {/* 🚀 RUTA ACTUALIZADA: Configuración */}
+              {/* Ruta conectada al módulo de Configuración */}
               <Route path="/configuracion" element={<ConfiguracionModule />} />
               
-              <Route path="/alertas" element={
-                <div className="p-6 text-[#555555]">
-                  <h2 className="font-inter font-bold text-xl mb-4 text-[#4A008B]">Módulo de Alertas</h2>
-                  <p>En desarrollo</p>
-                </div>
-              } />
+              {/* 🚀 RUTA ACTUALIZADA: Conectamos el componente real de Alertas */}
+              <Route path="/alertas" element={<AlertasModule />} />
             </Route>
             
             {/* Ruta de captura (404) - Si el usuario inventa una URL, lo mandamos al inicio */}

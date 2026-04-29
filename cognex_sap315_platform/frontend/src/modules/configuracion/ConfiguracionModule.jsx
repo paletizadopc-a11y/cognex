@@ -99,7 +99,7 @@ export const ConfiguracionModule = () => {
                 <th className="p-4 pl-6">Usuario / Email</th>
                 <th className="p-4">Rol</th>
                 <th className="p-4">Estado</th>
-                <th className="p-4 text-center">Activo (On/Off)</th>
+                <th className="p-4 text-center">Activo</th>
                 <th className="p-4 text-center">Acciones</th>
               </tr>
             </thead>
