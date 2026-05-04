@@ -1,12 +1,41 @@
 const { Lectura, ConfigCamara, Usuario, LogAlerta } = require('../models');
 const { Op } = require('sequelize');
+const axios = require('axios');
 
+/**
+ * 🚀 PROXY DE CÁMARA: Resuelve errores de CORS y 403 Forbidden.
+ * El backend actúa como puente entre el frontend y la cámara.
+ */
+exports.proxyCamara = async (req, res) => {
+  try {
+    // URL física de la cámara Cognex IS2000
+    const url = `http://192.168.1.203:8087/image.jpg`;
+    
+    const response = await axios.get(url, {
+      responseType: 'arraybuffer',
+      timeout: 3000,
+      auth: { 
+        username: 'admin', 
+        password: '' 
+      } // Credenciales por defecto del hardware
+    });
+
+    res.set('Content-Type', 'image/jpeg');
+    res.send(response.data);
+  } catch (error) {
+    console.error('Error en Proxy de Cámara:', error.message);
+    res.status(404).send('Cámara no disponible');
+  }
+};
+
+/**
+ * Registra una nueva lectura recibida desde el hardware o simulador.
+ * Aplica la regla de negocio de autovalidación al 55% de confianza.
+ */
 exports.crearLectura = async (req, res) => {
   try {
-    // 🚀 LPN añadido para recibirlo del simulador
     const { codigo_etiqueta, lpn, linea_origen, camara_id, resultado, confianza, metadata } = req.body;
 
-    // 🚀 REGLA DE NEGOCIO: Autovalidación al 55%
     let estado_sap = 'pendiente';
     let observacion = null;
 
@@ -14,13 +43,13 @@ exports.crearLectura = async (req, res) => {
       estado_sap = 'validado';
       observacion = 'Validación automática: Confianza superior al umbral (55%)';
     } else {
-      estado_sap = 'error'; // Esto hará que caiga en el panel de Alertas
+      estado_sap = 'error'; 
       observacion = 'Requiere revisión manual: Confianza óptica menor al 55%';
     }
 
     const lectura = await Lectura.create({
       codigo_etiqueta,
-      lpn, // Guardamos el LPN del pallet
+      lpn,
       fecha_hora: new Date(),
       estado_sap,
       linea_origen,
@@ -37,6 +66,9 @@ exports.crearLectura = async (req, res) => {
   }
 };
 
+/**
+ * Obtiene el listado de lecturas con soporte para filtros y paginación.
+ */
 exports.obtenerLecturas = async (req, res) => {
   try {
     const { estado, desde, hasta, codigo, pagina = 1, limite = 25 } = req.query;
@@ -59,94 +91,84 @@ exports.obtenerLecturas = async (req, res) => {
       offset: (parseInt(pagina) - 1) * parseInt(limite)
     });
 
-    res.json({
-      total: count,
-      pagina: parseInt(pagina),
-      totalPaginas: Math.ceil(count / limite),
-      lecturas
+    res.json({ 
+      total: count, 
+      pagina: parseInt(pagina), 
+      totalPaginas: Math.ceil(count / limite), 
+      lecturas 
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
+/**
+ * Permite actualizar o validar manualmente una lectura.
+ */
 exports.validarLectura = async (req, res) => {
   try {
     const { id } = req.params;
     const { estado_sap, observacion, codigo_etiqueta, lpn, linea_origen } = req.body;
 
     const lectura = await Lectura.findByPk(id);
-    if (!lectura) {
-      return res.status(404).json({ error: 'Lectura no encontrada' });
-    }
+    if (!lectura) return res.status(404).json({ error: 'Lectura no encontrada' });
     
-    // Actualizamos los campos recibidos
     lectura.estado_sap = estado_sap;
     if (observacion) lectura.observacion = observacion;
     if (codigo_etiqueta) lectura.codigo_etiqueta = codigo_etiqueta;
-    if (lpn !== undefined) lectura.lpn = lpn; 
+    if (lpn !== undefined) lectura.lpn = lpn;
     if (linea_origen) lectura.linea_origen = linea_origen;
 
     await lectura.save();
-
     res.json({ mensaje: 'Lectura validada exitosamente', lectura });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// ==========================================
-// 🚀 NUEVO MÓDULO DE ALERTAS
-// ==========================================
-
-// Obtener todas las alertas (lecturas que fallaron o están pendientes)
+/**
+ * Obtiene las alertas pendientes (lecturas con error o pendientes).
+ */
 exports.getAlertas = async (req, res) => {
   try {
     const alertas = await Lectura.findAll({
-      where: {
-        estado_sap: ['error', 'pendiente'] // Trae las que no pasaron la autovalidación
-      },
+      where: { estado_sap: ['error', 'pendiente'] },
       order: [['fecha_hora', 'DESC']],
-      limit: 100 // Límite por rendimiento
+      limit: 100
     });
 
-    // Mapeamos los datos para que el frontend los reciba con los nombres que espera
     const alertasFormateadas = alertas.map(alerta => ({
       id: alerta.id,
       lpn: alerta.lpn || 'S/N',
       linea_origen: alerta.linea_origen,
       codigo_etiqueta: alerta.codigo_etiqueta,
       confianza: alerta.confianza,
-      estado: alerta.estado_sap, // Renombramos estado_sap a estado para el frontend
-      fecha: alerta.fecha_hora   // Renombramos fecha_hora a fecha para el frontend
+      estado: alerta.estado_sap,
+      fecha: alerta.fecha_hora
     }));
 
     res.json({ alertas: alertasFormateadas });
   } catch (error) {
-    console.error(">>> [BACKEND] Error al obtener alertas:", error.message);
     res.status(500).json({ error: error.message });
   }
 };
 
-// Resolver (Validar manualmente) una alerta
+/**
+ * Marca una alerta como resuelta tras la intervención del operador.
+ */
 exports.resolverAlerta = async (req, res) => {
   try {
     const { id } = req.params;
     const lectura = await Lectura.findByPk(id);
+    if (!lectura) return res.status(404).json({ error: 'Alerta no encontrada' });
     
-    if (!lectura) {
-      return res.status(404).json({ error: 'Alerta no encontrada' });
-    }
-    
-    // Cambiamos el estado para que desaparezca de las pendientes
-    await lectura.update({ 
+    await lectura.update({
       estado_sap: 'resuelto', 
       observacion: 'Validación manual: Operador confirmó y resolvió la incidencia.'
     });
     
     res.json({ mensaje: 'Alerta resuelta con éxito', lectura });
   } catch (error) {
-    console.error(">>> [BACKEND] Error al resolver alerta:", error.message);
     res.status(500).json({ error: error.message });
   }
 };
