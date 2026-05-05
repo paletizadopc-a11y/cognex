@@ -12,7 +12,7 @@ load_dotenv()
 ultima_lectura_exitosa = None
 
 def login_service_account():
-    """Obtención de Token JWT para el backend[cite: 13]"""
+    """Obtención de Token JWT para el backend"""
     url = f"{os.getenv('API_BASE_URL')}/auth/login"
     try:
         res = requests.post(url, json={
@@ -38,21 +38,21 @@ def main():
         global ultima_lectura_exitosa
         
         # 🚀 FILTRO DE DUPLICADOS:
-        # Solo procesamos si el código cambió respecto al último detectado[cite: 7]
+        # Solo procesamos si el código cambió respecto al último detectado
         if lectura['codigo_etiqueta'] == ultima_lectura_exitosa:
             return
 
         url = f"{os.getenv('API_BASE_URL')}/lecturas"
         headers = {"Authorization": f"Bearer {token}"}
         
-        # Formateo de datos según requerimientos de Softys[cite: 8, 13]
+        # Formateo de datos según requerimientos de Softys
         payload = {
             'codigo_etiqueta': lectura['codigo_etiqueta'],
             'lpn': f"LPN-{lectura['codigo_etiqueta'][-5:]}", 
             'linea_origen': 'LINEA_01',
             'camara_id': 1, 
             'resultado': 'OK',
-            'confianza': 98.2, # Valor para pasar validación automática (>55%)
+            'confianza': 98.2,
             'metadata': lectura
         }
         
@@ -65,12 +65,12 @@ def main():
             print(f"❌ Error al enviar al Monitor: {e}")
 
     def callback_lectura(lectura):
-        # Ejecución asíncrona para no detener el flujo de la cámara[cite: 13]
+        # Ejecución asíncrona para no detener el flujo de la cámara
         threading.Thread(target=enviar_a_api_background, args=(lectura,)).start()
     
     try:
-        # Escaneo continuo cada 0.5 segundos[cite: 13]
-        reader.continuous_read(callback_lectura, interval=0.5) 
+        # Escaneo pasivo
+        reader.continuous_read(callback_lectura) 
     except KeyboardInterrupt:
         print("\n🛑 Sistema detenido por el usuario.")
         reader.disconnect()

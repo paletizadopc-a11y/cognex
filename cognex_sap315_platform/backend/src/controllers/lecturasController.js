@@ -4,27 +4,31 @@ const axios = require('axios');
 
 /**
  * 🚀 PROXY DE CÁMARA: Resuelve errores de CORS y 403 Forbidden.
- * El backend actúa como puente entre el frontend y la cámara.
+ * Actúa como túnel entre el frontend y el hardware Cognex.
  */
 exports.proxyCamara = async (req, res) => {
   try {
-    // URL física de la cámara Cognex IS2000
-    const url = `http://192.168.1.203:8087/image.jpg`;
+    const { COGNEX_IP, COGNEX_PORT_HMI, COGNEX_USER, COGNEX_PASS } = process.env;
+    const url = `http://${COGNEX_IP}:${COGNEX_PORT_HMI}/image.jpg`;
     
+    // Generación de cabecera de autenticación (maneja contraseña vacía)
+    const authString = `${COGNEX_USER}:${COGNEX_PASS || ''}`;
+    const authBase64 = Buffer.from(authString).toString('base64');
+
     const response = await axios.get(url, {
       responseType: 'arraybuffer',
-      timeout: 3000,
-      auth: { 
-        username: 'admin', 
-        password: '' 
-      } // Credenciales por defecto del hardware
+      timeout: 5000,
+      headers: {
+        'Authorization': `Basic ${authBase64}`,
+        'Cache-Control': 'no-cache'
+      }
     });
 
     res.set('Content-Type', 'image/jpeg');
     res.send(response.data);
   } catch (error) {
-    console.error('Error en Proxy de Cámara:', error.message);
-    res.status(404).send('Cámara no disponible');
+    console.error('❌ Error en Proxy de Cámara:', error.message);
+    res.status(404).send('Cámara no disponible o error de autenticación');
   }
 };
 

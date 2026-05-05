@@ -21,19 +21,20 @@ class CognexReader:
         self.socket = None
         
     def connect(self):
-        """Inicia sesión en la cámara Cognex (Handshake Telnet)[cite: 1, 11, 12]"""
+        """Inicia sesión en la cámara Cognex (Handshake Telnet)"""
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # Mantenemos el timeout solo para la fase de conexión/login
             self.socket.settimeout(self.timeout)
             self.socket.connect((self.ip, self.port))
             
             # Esperar prompt y enviar credenciales
             time.sleep(0.5)
             self.socket.recv(1024) 
-            self.socket.sendall(b"admin\r\n") # Usuario[cite: 1]
+            self.socket.sendall(b"admin\r\n") # Usuario
             time.sleep(0.3)
             self.socket.recv(1024) 
-            self.socket.sendall(b"\r\n") # Password vacío[cite: 1]
+            self.socket.sendall(b"\r\n") # Password vacío
             time.sleep(0.3)
             self.socket.recv(1024) 
             
@@ -48,36 +49,47 @@ class CognexReader:
             self.socket.close()
             self.socket = None
             logger.info("🔌 Desconectado del hardware")
-    
-    def trigger_read(self):
-        """Dispara la cámara y filtra lecturas nulas o errores[cite: 11, 12]"""
-        if not self.socket:
-            if not self.connect(): return None
-        
-        try:
-            self.socket.sendall(b"GO\r\n") # Comando de disparo
-            response = self.socket.recv(1024).decode('utf-8').strip()
-            
-            # 🚀 FILTRO DE SOLUCIÓN:
-            # Ignoramos "0" (No Read), strings vacíos o mensajes de sistema[cite: 11]
-            if not response or response == "0" or "User:" in response or "Password:" in response:
-                return None
-            
-            return {
-                'codigo_etiqueta': response,
-                'fecha_hora': datetime.now().isoformat(),
-                'estado': 'OK',
-                'camara_id': self.ip
-            }
-        except Exception as e:
-            logger.error(f"Error en trigger: {e}")
-            self.disconnect()
-            return None
 
-    def continuous_read(self, callback, interval=0.5):
-        logger.info("🚀 Escaneo de cinta transportadora iniciado...")
+    def continuous_read(self, callback):
+        """Modo Escucha Pasiva: Espera la señal del sensor SICK"""
+        if not self.socket:
+            if not self.connect(): 
+                return
+        
+        # 🚀 CÍTICRO: Quitamos el timeout para que el script no se caiga 
+        # si la línea de producción se detiene y no pasan pallets por minutos u horas.
+        self.socket.settimeout(None)
+        
+        logger.info("🚀 Modo Hardware activado. Esperando disparo del sensor SICK...")
+        
         while True:
-            lectura = self.trigger_read()
-            if lectura: 
+            try:
+                # El script se bloquea aquí hasta que la cámara detecta algo
+                response = self.socket.recv(1024).decode('utf-8').strip()
+                
+                # Si response está vacío, la cámara cerró la conexión
+                if not response:
+                    logger.warning("⚠️ Conexión cerrada por la cámara.")
+                    self.disconnect()
+                    break
+                
+                # 🚀 FILTRO DE SOLUCIÓN:
+                # Ignoramos "0" (No Read) o los mensajes residuales del Telnet
+                if response == "0" or "User:" in response or "Password:" in response or "Logged In" in response:
+                    continue
+                
+                # Preparamos el paquete de lectura
+                lectura = {
+                    'codigo_etiqueta': response,
+                    'fecha_hora': datetime.now().isoformat(),
+                    'estado': 'OK',
+                    'camara_id': self.ip
+                }
+                
+                # Enviamos al main.py
                 callback(lectura)
-            time.sleep(interval)
+                
+            except Exception as e:
+                logger.error(f"❌ Error durante la escucha: {e}")
+                self.disconnect()
+                break
