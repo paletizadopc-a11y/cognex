@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 // Importamos el Provider y el Hook de nuestro contexto
 import { AuthProvider, useAuth } from './shared/context/AuthContext';
@@ -9,17 +9,15 @@ import { Layout } from './shared/components/Layout';
 import { DashboardModule } from './modules/dashboard/DashboardModule';
 import { LoginModule } from './modules/auth/LoginModule';
 
-// Importamos el módulo de Historial de Lecturas
+// Importamos los módulos funcionales
 import { LecturasModule } from './modules/lecturas/LecturasModule';
-
-// Importamos el módulo del Monitor en Vivo
 import { MonitorModule } from './modules/monitor/MonitorModule';
-
-// Importamos el módulo de Configuración
 import { ConfiguracionModule } from './modules/configuracion/ConfiguracionModule';
-
-// 🚀 NUEVO: Importamos el módulo de Alertas
 import { AlertasModule } from './modules/alertas/AlertasModule';
+
+// 🚀 NUEVO: Importamos el módulo de Auditoría
+// Asegúrate de que el archivo esté en esta ruta según tu estructura de carpetas
+import AuditoriaModule from './modules/auditoria/AuditoriaModule';
 
 // Wrapper para proteger las rutas privadas
 const RutaProtegida = () => {
@@ -29,7 +27,10 @@ const RutaProtegida = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#F3E8FF]">
-        <p className="text-[#555555] font-hanken animate-pulse">Cargando sesión de usuario...</p>
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-[#555555] font-hanken animate-pulse">Cargando sesión de usuario...</p>
+        </div>
       </div>
     );
   }
@@ -39,7 +40,7 @@ const RutaProtegida = () => {
     return <Navigate to="/login" replace />;
   }
 
-  // Si todo está correcto, renderizamos el Layout con su barra lateral y cabecera
+  // Si está autenticado, renderizamos el Layout con el Sidebar y el contenido
   return (
     <Layout>
       <Outlet />
@@ -47,9 +48,12 @@ const RutaProtegida = () => {
   );
 };
 
+// Necesitamos importar Outlet de react-router-dom para que RutaProtegida funcione con Layout
+import { Outlet } from 'react-router-dom';
+
 function App() {
   return (
-    // Envolvemos toda la aplicación en el AuthProvider para que el estado global esté disponible
+    // Envolvemos todo en el AuthProvider para que el estado global esté disponible
     <AuthProvider>
       <BrowserRouter>
         {/* Contenedor principal con la paleta de colores y tipografía base */}
@@ -69,11 +73,14 @@ function App() {
               {/* Ruta conectada al Monitor en Vivo */}
               <Route path="/monitor" element={<MonitorModule />} />
               
+              {/* 🚀 NUEVA RUTA: Módulo de Auditoría de Carga */}
+              <Route path="/auditoria" element={<AuditoriaModule />} />
+              
+              {/* Ruta conectada al módulo de Alertas */}
+              <Route path="/alertas" element={<AlertasModule />} />
+
               {/* Ruta conectada al módulo de Configuración */}
               <Route path="/configuracion" element={<ConfiguracionModule />} />
-              
-              {/* 🚀 RUTA ACTUALIZADA: Conectamos el componente real de Alertas */}
-              <Route path="/alertas" element={<AlertasModule />} />
             </Route>
             
             {/* Ruta de captura (404) - Si el usuario inventa una URL, lo mandamos al inicio */}

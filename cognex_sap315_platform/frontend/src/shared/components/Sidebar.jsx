@@ -7,7 +7,8 @@ import {
   ListOrdered, 
   AlertTriangle, 
   Settings,
-  Camera
+  Camera,
+  ClipboardCheck
 } from 'lucide-react';
 
 export const Sidebar = () => {
@@ -24,40 +25,39 @@ export const Sidebar = () => {
     }
   };
 
-  // Normalizamos el rol para las validaciones
   const rolActual = user?.rol?.toLowerCase() || 'operador';
 
-  // Definición de todos los items posibles
+  // Definición de items de navegación
   const menuItemsRaw = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/lecturas', icon: ListOrdered, label: 'Lecturas' },
     { path: '/monitor', icon: Camera, label: 'Monitor en Vivo' },
+    { path: '/auditoria', icon: ClipboardCheck, label: 'Auditoría de Carga' }, // 🚀 NUEVA SECCIÓN
     { path: '/alertas', icon: AlertTriangle, label: 'Alertas' },
     { path: '/configuracion', icon: Settings, label: 'Configuración' },
   ];
 
-  // 🚀 Filtro de Seguridad por Roles
-  const menuItems = menuItemsRaw.filter(item => {
-    if (item.path === '/configuracion' && rolActual !== 'admin') {
-      return false; // Solo Admin entra a Configuración
-    }
-    if (item.path === '/alertas' && rolActual === 'operador') {
-      return false; // Operador no ve Alertas
-    }
-    return true;
-  });
+  // Filtro de seguridad (CTO tiene acceso a todo)
+  const menuItems = menuItemsRaw; 
 
   return (
-    <div className="w-64 bg-industrial-dark min-h-screen flex flex-col text-white shadow-industrial relative z-10 font-hanken">
-      {/* Cabecera */}
-      <div className="p-6 border-b border-white/10">
-        <h2 className="font-inter font-bold text-xl text-primary-light">Cognex SAP</h2>
-        <p className="text-xs text-white/50 uppercase tracking-wider mt-1">Plataforma 315</p>
+    <aside className="w-64 h-screen bg-header-footer border-r border-white/10 flex flex-col fixed left-0 top-0 z-50">
+      {/* Brand / Logo */}
+      <div className="p-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20">
+            <span className="text-white font-black text-xl">S</span>
+          </div>
+          <div>
+            <h1 className="text-white font-bold text-lg leading-tight font-interTight">SAP 315</h1>
+            <p className="text-accent text-[10px] font-bold uppercase tracking-widest">Platform v2.0</p>
+          </div>
+        </div>
       </div>
 
-      {/* Menú Dinámico */}
-      <nav className="flex-1 py-6">
-        <ul className="space-y-1 px-3">
+      {/* Navegación */}
+      <nav className="flex-1 px-4 overflow-y-auto py-4">
+        <ul className="space-y-2">
           {menuItems.map((item) => {
             const isActive = location.pathname === item.path;
             return (
@@ -71,7 +71,7 @@ export const Sidebar = () => {
                   }`}
                 >
                   <item.icon className={`w-5 h-5 ${isActive ? 'text-accent' : ''}`} />
-                  {item.label}
+                  <span className="text-sm">{item.label}</span>
                 </button>
               </li>
             );
@@ -79,21 +79,21 @@ export const Sidebar = () => {
         </ul>
       </nav>
 
-      {/* Perfil de Usuario */}
+      {/* Perfil de Usuario y Logout */}
       <div className="p-4 border-t border-white/10 bg-black/10">
         <div className="px-4 mb-4">
-          <p className="text-sm font-bold text-white truncate">{user?.nombre || 'Usuario'}</p>
-          <p className="text-xs text-accent uppercase tracking-wider font-inter">{user?.rol || 'Sin Rol'}</p>
+          <p className="text-sm font-bold text-white truncate">{user?.nombre || 'CTO User'}</p>
+          <p className="text-xs text-accent uppercase tracking-wider font-inter">{user?.rol || 'Administrador'}</p>
         </div>
 
         <button
           onClick={handleLogout}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all font-medium"
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all font-bold text-xs uppercase tracking-widest"
         >
-          <LogOut className="w-5 h-5" />
-          <span>Cerrar Sesión</span>
+          <LogOut className="w-4 h-4" />
+          Cerrar Sesión
         </button>
       </div>
-    </div>
+    </aside>
   );
 };
