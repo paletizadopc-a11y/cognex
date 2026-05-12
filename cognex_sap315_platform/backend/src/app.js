@@ -9,6 +9,8 @@ const { sequelize } = require('./models');
 const authRoutes = require('./routes/auth');
 const lecturasRoutes = require('./routes/lecturas');
 const usuariosRoutes = require('./routes/usuariosRoutes');
+// 🚀 NUEVA RUTA DE CONFIGURACIÓN
+const configuracionRoutes = require('./routes/configuracion');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -37,10 +39,14 @@ app.use(morgan(process.env.LOG_LEVEL || 'dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Definición de la versión de la API para mantener consistencia
+const API_PREFIX = `/api/${process.env.API_VERSION || 'v1'}`;
+
 // Rutas
-app.use(`/api/${process.env.API_VERSION || 'v1'}/auth`, authLimiter, authRoutes);
-app.use(`/api/${process.env.API_VERSION || 'v1'}/lecturas`, apiLimiter, lecturasRoutes);
-app.use(`/api/${process.env.API_VERSION || 'v1'}`, usuariosRoutes);
+app.use(`${API_PREFIX}/auth`, authLimiter, authRoutes);
+app.use(`${API_PREFIX}/lecturas`, apiLimiter, lecturasRoutes);
+app.use(`${API_PREFIX}`, usuariosRoutes);
+app.use(`${API_PREFIX}/configuracion`, apiLimiter, configuracionRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -48,11 +54,11 @@ app.get('/health', (req, res) => {
 });
 
 // Sincronizar DB y arrancar
-// 🚀 Usamos sync() normal ya que la columna 'activo' ya fue creada manualmente
 sequelize.sync().then(() => {
   console.log('✅ Base de datos conectada y sincronizada');
   app.listen(PORT, () => {
     console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+    console.log(`📡 Endpoints operativos en ${API_PREFIX}`);
   });
 }).catch(err => {
   console.error('❌ Error conectando a la base de datos:', err);

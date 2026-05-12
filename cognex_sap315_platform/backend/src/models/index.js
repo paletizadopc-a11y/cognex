@@ -63,6 +63,19 @@ const SessionLogin = sequelize.define('sessions_login', {
   activa: { type: DataTypes.BOOLEAN, defaultValue: true }
 }, { timestamps: false });
 
+const Configuracion = sequelize.define('configuraciones', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  umbral_confianza: { type: DataTypes.INTEGER, defaultValue: 55 },
+  modo_operacion: { type: DataTypes.STRING(20), defaultValue: 'AUTOMATICO' },
+  intervalo_lectura: { type: DataTypes.INTEGER, defaultValue: 2000 },
+  integracion_sap: { type: DataTypes.BOOLEAN, defaultValue: true },
+  auto_alertas_auditoria: { type: DataTypes.BOOLEAN, defaultValue: true }
+}, { 
+  timestamps: true,
+  updatedAt: 'fecha_actualizacion',
+  createdAt: false 
+});
+
 // Relaciones
 Usuario.belongsTo(Rol, { foreignKey: 'rol_id', as: 'rol' });
 Rol.hasMany(Usuario, { foreignKey: 'rol_id', as: 'usuarios' });
@@ -80,5 +93,6 @@ module.exports = {
   Lectura,
   LogAlerta,
   ConfigCamara,
-  SessionLogin
+  SessionLogin,
+  Configuracion
 };
