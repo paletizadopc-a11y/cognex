@@ -19,19 +19,17 @@ const Usuario = sequelize.define('usuarios', {
   fecha_actualizacion: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
 }, { timestamps: false });
 
+// 🚀 TABLA LECTURAS ACTUALIZADA (Solo LPN y campos esenciales)
 const Lectura = sequelize.define('lecturas', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  codigo_etiqueta: { type: DataTypes.STRING(255), allowNull: false },
-  lpn: { type: DataTypes.STRING(100), allowNull: true },
+  lpn: { type: DataTypes.STRING(100), allowNull: false, unique: true },
   fecha_hora: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
   estado_sap: { type: DataTypes.STRING(20), defaultValue: 'pendiente' },
   linea_origen: DataTypes.STRING(50),
-  camara_id: DataTypes.INTEGER,
-  resultado: DataTypes.JSONB,
-  confianza: DataTypes.DECIMAL(5, 2),
-  observacion: DataTypes.TEXT,
-  metadata_lectura: { type: DataTypes.JSONB, defaultValue: {} }
-}, { timestamps: false });
+  usuario_validador_id: DataTypes.INTEGER
+}, { 
+  timestamps: false
+});
 
 const LogAlerta = sequelize.define('log_alertas', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
@@ -69,7 +67,7 @@ const SessionLogin = sequelize.define('sessions_login', {
 Usuario.belongsTo(Rol, { foreignKey: 'rol_id', as: 'rol' });
 Rol.hasMany(Usuario, { foreignKey: 'rol_id', as: 'usuarios' });
 
-Lectura.belongsTo(ConfigCamara, { foreignKey: 'camara_id' });
+// Se eliminó la relación de camara_id con Lectura porque ya no existe en la base de datos
 Lectura.belongsTo(Usuario, { foreignKey: 'usuario_validador_id', as: 'validador' });
 
 LogAlerta.belongsTo(Lectura, { foreignKey: 'lectura_id' });

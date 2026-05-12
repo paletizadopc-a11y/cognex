@@ -6,10 +6,8 @@ import { useDashboard } from './hooks/useDashboard';
 import { Loader2, RefreshCw } from 'lucide-react';
 
 export const DashboardModule = () => {
-  // Consumimos nuestro Hook personalizado
   const { lecturas, alertas, kpis, loading, error, refetch } = useDashboard();
 
-  // Pantalla de carga inicial
   if (loading && lecturas.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-[calc(100vh-100px)]">
@@ -21,11 +19,10 @@ export const DashboardModule = () => {
 
   return (
     <div className="p-8 font-hanken">
-      {/* Cabecera y botón de recarga */}
       <div className="flex flex-col md:flex-row md:justify-between md:items-end mb-8 gap-4">
         <div>
           <h1 className="font-inter font-bold text-3xl text-[#343A40] mb-2">Dashboard Operativo</h1>
-          <p className="text-[#555555]">Monitoreo en tiempo real del sistema Cognex SAP 315</p>
+          <p className="text-[#555555]">Monitoreo en tiempo real del sistema SAP 315</p>
         </div>
         
         <button 
@@ -38,18 +35,15 @@ export const DashboardModule = () => {
         </button>
       </div>
 
-      {/* Banner de Error (si el servidor se cae) */}
       {error && (
-        <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl border border-red-100 flex items-center gap-3">
-          <span className="font-bold">Error de conexión:</span> {error}
+        <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl border border-red-100 flex items-center gap-3 animate-in fade-in">
+          <span className="font-bold">Error de conexión con Backend:</span> {error}
         </div>
       )}
 
-      {/* Grid de KPIs inyectado con datos reales */}
       <KpiGrid kpis={kpis} />
 
-      {/* Tablas principales inyectadas con datos reales */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mt-8">
         <div className="xl:col-span-2">
           <LecturasTable lecturas={lecturas} />
         </div>

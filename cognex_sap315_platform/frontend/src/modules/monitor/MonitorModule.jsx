@@ -1,196 +1,238 @@
-import React, { useState, useEffect } from 'react';
-import { Camera, Image as ImageIcon, X, Maximize, Clock, CheckCircle, AlertTriangle, ShieldCheck, VideoOff } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../../shared/services/api';
+import { ScanLine, CheckCircle2, AlertCircle, Loader2, Clock, MonitorPlay } from 'lucide-react';
 import { Badge } from '../../shared/components/Badge';
 
-// CONFIGURACIÓN DE CÁMARA DESDE .ENV
-const STREAM_BASE_URL = import.meta.env.VITE_CAMERA_STREAM_URL || "http://192.168.1.203:8087/image.jpg";
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', '') || 'http://localhost:3000';
-
 export const MonitorModule = () => {
-  const [vistaActiva, setVistaActiva] = useState('vivo'); 
-  const [lecturas, setLecturas] = useState([]);
-  const [lecturaActual, setLecturaActual] = useState(null);
-  const [imagenModal, setImagenModal] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [flash, setFlash] = useState(false);
-  const [conexionRealtime, setConexionRealtime] = useState(true);
-  const [errorStream, setErrorStream] = useState(false);
+  const [ultimosEscaneos, setUltimosEscaneos] = useState([]);
+  const [escaneoActual, setEscaneoActual] = useState(null);
   const [horaActual, setHoraActual] = useState(new Date());
+  
+  // 🚀 Estados del Escáner RF
+  const [scanStatus, setScanStatus] = useState(null);
+  const barcodeBuffer = useRef('');
+  const lastKeyTime = useRef(Date.now());
 
-  // 🚀 NUEVO: Estado para la URL con timestamp para forzar refresco[cite: 17]
-  const [streamUrlConTimestamp, setStreamUrlConTimestamp] = useState(`${STREAM_BASE_URL}?t=${Date.now()}`);
-
-  // 1. Reloj fluido del sistema[cite: 17]
+  // 1. Reloj fluido del sistema
   useEffect(() => {
     const clockInterval = setInterval(() => setHoraActual(new Date()), 1000);
     return () => clearInterval(clockInterval);
   }, []);
 
-  // 2. 🚀 LÓGICA DE VIDEO: Refresca la imagen cada 100ms para simular streaming[cite: 17]
-  useEffect(() => {
-    if (vistaActiva === 'vivo' && !errorStream) {
-      const videoInterval = setInterval(() => {
-        setStreamUrlConTimestamp(`${STREAM_BASE_URL}?t=${Date.now()}`);
-      }, 100); 
-      return () => clearInterval(videoInterval);
-    }
-  }, [vistaActiva, errorStream]);
-
-  // 3. Fetch de datos del backend[cite: 17]
-  const fetchLiveFeed = async () => {
+  // 2. Cargar historial inicial al abrir la pantalla
+  const fetchEscaneos = async () => {
     try {
-      const res = await api.get('/lecturas?limite=20');
-      const data = res.lecturas || [];
-      if (data.length > 0) {
-          const nuevaLectura = data[0];
-          setLecturas(data);
-          setLecturaActual(prev => {
-             if (vistaActiva === 'vivo' && (!prev || prev.id !== nuevaLectura.id)) {
-                 setFlash(true);
-                 setTimeout(() => setFlash(false), 300);
-             }
-             return nuevaLectura;
-          });
-          setConexionRealtime(true);
+      const res = await api.get('/lecturas?limite=10');
+      if (res.lecturas) {
+        setUltimosEscaneos(res.lecturas);
+        if (res.lecturas.length > 0) {
+          setEscaneoActual(res.lecturas[0]);
+        }
       }
-    } catch (err) {
-      setConexionRealtime(false);
-    } finally {
-      setLoading(false);
+    } catch (error) {
+      console.error("Error cargando escaneos:", error);
     }
   };
 
   useEffect(() => {
-    fetchLiveFeed();
-    const interval = setInterval(fetchLiveFeed, 2000); 
-    return () => clearInterval(interval);
-  }, [vistaActiva]);
+    fetchEscaneos();
+  }, []);
 
-  const getImagenReal = (lectura) => {
-    if (!lectura || !lectura.imagen_url) return '/no-image-available.png'; 
-    return lectura.imagen_url.startsWith('http') ? lectura.imagen_url : `${API_BASE_URL}${lectura.imagen_url}`;
+  // 🚀 3. EL MOTOR DEL ESCÁNER ZEBRA INTEGRADO EN EL MONITOR
+  useEffect(() => {
+    const handleKeyDown = async (e) => {
+      // Evitar conflictos si el usuario escribe en inputs
+      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+
+      const currentTime = Date.now();
+      
+      // Tolerancia de 500ms para emulación de teclado USB-HID
+      if (currentTime - lastKeyTime.current > 500) {
+        barcodeBuffer.current = '';
+      }
+      lastKeyTime.current = currentTime;
+
+      // Atrapar el 'Enter' final de la pistola
+      if (e.key === 'Enter') {
+        const lecturaFinal = barcodeBuffer.current.trim();
+        barcodeBuffer.current = ''; 
+        
+        // Si el LPN es válido, lo procesamos
+        if (lecturaFinal.length > 5) { 
+          await procesarCapturaLpn(lecturaFinal);
+        }
+        return;
+      }
+
+      // Acumular los números
+      if (e.key.length === 1) {
+        barcodeBuffer.current += e.key;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // 🚀 4. ENVIAR A BD Y ACTUALIZAR LA PANTALLA GIGANTE
+  const procesarCapturaLpn = async (lpnCapturado) => {
+    try {
+      setScanStatus({ type: 'loading', msg: `Capturando...` });
+      
+      const payload = {
+        lpn: lpnCapturado,
+        linea_origen: 'LINEA_01_RF_WEB'
+      };
+
+      // Guardamos en la base de datos (SAP315)
+      const response = await api.post('/lecturas', payload);
+      
+      const nuevaLectura = response.lectura || {
+        id: Date.now(),
+        lpn: lpnCapturado,
+        fecha_hora: new Date(),
+        estado_sap: 'ok',
+        linea_origen: 'LINEA_01_RF_WEB'
+      };
+
+      // ¡Magia Visual! Actualizamos el recuadro negro y la lista lateral de inmediato
+      setEscaneoActual(nuevaLectura);
+      setUltimosEscaneos(prev => [nuevaLectura, ...prev].slice(0, 10));
+      
+      setScanStatus({ type: 'success', msg: `¡LPN Registrado!` });
+
+    } catch (error) {
+      setScanStatus({ type: 'error', msg: `Error: LPN ya existe o fallo de BD` });
+    } finally {
+      setTimeout(() => setScanStatus(null), 2000);
+    }
   };
 
   return (
-    <div className="p-8 font-hanken h-[calc(100vh-80px)] flex flex-col overflow-hidden">
-      {/* Cabecera[cite: 17] */}
-      <div className="mb-4 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 shrink-0">
+    <div className="p-8 font-hanken">
+      
+      {/* CABECERA */}
+      <div className="flex flex-col md:flex-row md:justify-between md:items-end mb-6 gap-4">
         <div>
-          <h1 className="font-inter font-bold text-3xl text-[#343A40] mb-2 flex items-center gap-3">
-            <Camera className="w-8 h-8 text-[#4A008B]" /> Monitor Visual (Cam-01)
-          </h1>
-          <p className="text-[#555555]">Transmisión directa de planta y registro fotográfico.</p>
+          <div className="flex items-center gap-3 mb-2">
+            <MonitorPlay className="w-8 h-8 text-[#4A008B]" />
+            <h1 className="font-inter font-bold text-3xl text-[#343A40]">Monitor Andon RF</h1>
+          </div>
+          <p className="text-[#555555]">Pantalla principal de operación. Dispara la pistola al código LPN.</p>
         </div>
         
-        <div className="flex items-center gap-4">
-           {/* Indicador de Señal Cámara[cite: 17] */}
-           <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-gray-200 shadow-sm">
-             <div className="relative flex h-3 w-3">
-               {!errorStream && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#0AE8C6] opacity-75"></span>}
-               <span className={`relative inline-flex rounded-full h-3 w-3 ${!errorStream ? 'bg-[#0AE8C6]' : 'bg-red-500'}`}></span>
-             </div>
-             <span className="text-sm font-bold text-[#555555]">{!errorStream ? 'Señal Cámara OK' : 'Sin Señal de Video'}</span>
-           </div>
-
-           {/* Tabs[cite: 17] */}
-           <div className="flex bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
-             <button onClick={() => setVistaActiva('vivo')} className={`px-5 py-2.5 rounded-lg text-sm font-bold ${vistaActiva === 'vivo' ? 'bg-[#4A008B] text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}>En Vivo</button>
-             <button onClick={() => setVistaActiva('galeria')} className={`px-5 py-2.5 rounded-lg text-sm font-bold ${vistaActiva === 'galeria' ? 'bg-[#4A008B] text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}>Galería</button>
-           </div>
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-2 px-4 py-2 bg-[#0AE8C6]/10 text-[#0AE8C6] border border-[#0AE8C6]/50 rounded-full text-sm font-bold shadow-sm">
+            <div className="w-2 h-2 rounded-full bg-[#0AE8C6] animate-pulse"></div>
+            Pistola RF Lista
+          </span>
         </div>
       </div>
 
-      {/* VISTA EN VIVO[cite: 17] */}
-      {vistaActiva === 'vivo' && (
-        <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0 pb-4">
-          <div className="flex-1 bg-black rounded-2xl overflow-hidden relative shadow-2xl border border-gray-800 flex flex-col h-full">
-            {flash && <div className="absolute inset-0 bg-white z-50 opacity-80 animate-pulse"></div>}
-
-            <div className="absolute top-4 left-4 z-20 flex items-center gap-3">
-               <span className="px-3 py-1 bg-[#0AE8C6]/80 text-black border border-[#0AE8C6] rounded-full text-xs font-bold tracking-widest flex items-center gap-2 backdrop-blur-md">
-                 <div className="w-2 h-2 rounded-full bg-black animate-pulse"></div> EN VIVO
-               </span>
-            </div>
-            
-            <div className="absolute top-4 right-4 z-20 text-white font-mono text-sm backdrop-blur-md px-3 py-1 bg-black/50 rounded-lg">
+      {/* CONTENEDOR PRINCIPAL */}
+      <div className="flex flex-col xl:flex-row gap-6 h-[calc(100vh-200px)]">
+        
+        {/* PANTALLA GIGANTE CENTRAL (Estilo Andon) */}
+        <div className="flex-1 bg-[#0A0A0A] rounded-2xl border border-gray-800 shadow-2xl overflow-hidden flex flex-col relative">
+          
+          {/* Top Bar de la Pantalla */}
+          <div className="absolute top-4 left-4 right-4 flex justify-between items-center z-10">
+            <span className="flex items-center gap-2 px-3 py-1 bg-[#4A008B] text-white border border-[#7B1FA2] rounded-full text-xs font-bold tracking-widest uppercase">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#0AE8C6] animate-pulse"></div>
+              ESPERANDO LECTURA
+            </span>
+            <span className="font-mono text-[#0AE8C6] text-sm tracking-wider font-bold bg-[#0AE8C6]/10 px-3 py-1 rounded">
               {horaActual.toLocaleTimeString()}
-            </div>
-
-            {/* 🚀 EL CAMBIO: Stream con refresco dinámico[cite: 17] */}
-            <div className="flex-1 relative flex items-center justify-center bg-[#0a0a0a] min-h-0">
-              {!errorStream ? (
-                <img 
-                  src={streamUrlConTimestamp} 
-                  alt="Stream Real" 
-                  className="absolute inset-0 w-full h-full object-contain"
-                  onError={() => setErrorStream(true)} 
-                  crossOrigin="anonymous"
-                />
-              ) : (
-                <div className="flex flex-col items-center gap-4 text-gray-500">
-                  <VideoOff className="w-16 h-16 opacity-20" />
-                  <p className="font-bold">CONEXIÓN PERDIDA CON CÁMARA (.203)</p>
-                </div>
-              )}
-              
-              <div className="relative z-10 w-48 h-48 sm:w-64 sm:h-64 border-2 border-[#0AE8C6]/50 flex flex-col items-center justify-center bg-black/20 backdrop-blur-[2px]">
-                <h2 className="text-white font-bold text-4xl sm:text-5xl drop-shadow-lg mb-2">
-                  {lecturaActual?.codigo_etiqueta || '---'}
-                </h2>
-                <div className="px-4 py-1.5 bg-[#4A008B]/90 text-white font-mono text-xs sm:text-sm rounded border border-purple-400">
-                  {lecturaActual?.lpn || 'ESPERANDO...'}
-                </div>
-              </div>
-            </div>
-
-            {/* Barra Inferior[cite: 17] */}
-            <div className="bg-black/90 p-4 grid grid-cols-3 gap-4 text-center z-20 border-t border-gray-800">
-              <div>
-                <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Confianza</p>
-                <p className={`text-xl font-bold ${lecturaActual?.confianza >= 55 ? 'text-[#0AE8C6]' : 'text-red-400'}`}>
-                  {lecturaActual?.confianza ? `${lecturaActual.confianza}%` : '--'}
-                </p>
-              </div>
-              <div className="border-x border-gray-800">
-                <p className="text-[10px] text-gray-400 font-bold uppercase mb-1">Línea</p>
-                <p className="text-white font-bold text-lg">{lecturaActual?.linea_origen || '--'}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-gray-400 font-bold uppercase mb-2">Estado SAP</p>
-                <span className={`px-3 py-1 rounded text-xs font-bold ${lecturaActual?.estado_sap === 'validado' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-                  {lecturaActual?.estado_sap?.toUpperCase() || 'ESPERANDO'}
-                </span>
-              </div>
-            </div>
+            </span>
           </div>
 
-          {/* Lista Lateral[cite: 17] */}
-          <div className="w-full lg:w-80 bg-white rounded-2xl shadow-soft border border-gray-100 flex flex-col overflow-hidden h-full">
-            <div className="p-4 border-b border-gray-100 bg-gray-50/50">
-              <h3 className="font-inter font-bold text-sm text-[#343A40] flex items-center gap-2">
-                <Clock className="w-4 h-4 text-[#4A008B]" /> Últimos Escaneos
-              </h3>
+          {/* Banner de Feedback (Pistolazo) */}
+          {scanStatus && (
+            <div className={`absolute top-16 left-1/2 -translate-x-1/2 z-20 px-8 py-3 rounded-full flex items-center gap-3 font-bold text-base shadow-2xl animate-in fade-in slide-in-from-top-4
+              ${scanStatus.type === 'success' ? 'bg-[#0AE8C6] text-[#0A0A0A]' : 
+                scanStatus.type === 'error' ? 'bg-red-500 text-white' : 
+                'bg-white text-black'}`}
+            >
+              {scanStatus.type === 'success' && <CheckCircle2 className="w-6 h-6" />}
+              {scanStatus.type === 'error' && <AlertCircle className="w-6 h-6" />}
+              {scanStatus.type === 'loading' && <Loader2 className="w-6 h-6 animate-spin" />}
+              {scanStatus.msg}
             </div>
-            <div className="flex-1 overflow-y-auto p-2 space-y-2">
-              {lecturas.slice(1, 8).map((lectura) => (
-                <div key={lectura.id} className="p-3 rounded-xl border border-gray-100 bg-white hover:border-[#4A008B]/30 transition-all cursor-pointer">
-                  <div className="flex justify-between items-start mb-1">
-                    <span className="font-bold text-[#343A40]">{lectura.codigo_etiqueta}</span>
-                    <span className={`text-xs font-bold ${lectura.confianza >= 55 ? 'text-emerald-600' : 'text-red-600'}`}>{lectura.confianza}%</span>
-                  </div>
-                  <div className="flex justify-between items-center text-[11px] text-gray-500">
-                    <span>{lectura.lpn}</span>
-                    <span>{new Date(lectura.fecha_hora).toLocaleTimeString()}</span>
-                  </div>
+          )}
+
+          {/* Área Central (Muestra el LPN) */}
+          <div className="flex-1 flex items-center justify-center p-8 relative">
+            {escaneoActual ? (
+              <div key={escaneoActual.id} className="w-[80%] max-w-2xl border-4 border-[#0AE8C6]/30 border-dashed flex flex-col items-center justify-center py-20 relative bg-[#0AE8C6]/5 animate-in zoom-in duration-300 rounded-2xl">
+                {/* Esquinas del bounding box */}
+                <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-[#0AE8C6]"></div>
+                <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-[#0AE8C6]"></div>
+                <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-[#0AE8C6]"></div>
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-[#0AE8C6]"></div>
+                
+                <span className="text-[#0AE8C6] font-bold tracking-widest uppercase mb-4 opacity-80">ÚLTIMO LPN ESCANEADO</span>
+                <div className="bg-[#4A008B] text-white px-8 py-4 font-mono text-5xl font-black tracking-widest shadow-2xl shadow-[#4A008B]/50 border-2 border-[#7B1FA2] rounded-xl">
+                  {escaneoActual.lpn}
                 </div>
-              ))}
+              </div>
+            ) : (
+              <div className="text-white/20 flex flex-col items-center">
+                <ScanLine className="w-24 h-24 mb-6 opacity-30" />
+                <p className="font-mono text-xl uppercase tracking-widest opacity-50">Sistema Listo</p>
+              </div>
+            )}
+          </div>
+
+          {/* Footer del Monitor */}
+          <div className="h-24 border-t border-white/10 bg-[#2C0140] grid grid-cols-2 divide-x divide-white/10">
+            <div className="flex flex-col items-center justify-center">
+              <span className="text-xs text-white/50 uppercase tracking-widest font-bold mb-1">Línea de Operación</span>
+              <span className="text-white font-bold text-xl tracking-wider">{escaneoActual ? escaneoActual.linea_origen : '---'}</span>
+            </div>
+            <div className="flex flex-col items-center justify-center">
+              <span className="text-xs text-white/50 uppercase tracking-widest font-bold mb-1">Estado de Integración SAP</span>
+              {escaneoActual ? (
+                <span className="px-4 py-1.5 bg-[#0AE8C6]/20 text-[#0AE8C6] border border-[#0AE8C6]/50 rounded font-black tracking-widest uppercase text-lg">
+                  {escaneoActual.estado_sap === 'ok' ? 'VALIDADO OK' : escaneoActual.estado_sap}
+                </span>
+              ) : (
+                <span className="text-white/50 font-bold text-lg">---</span>
+              )}
             </div>
           </div>
         </div>
-      )}
-      
-      {/* Vista de Galería y Modales se mantienen igual[cite: 17] */}
+
+        {/* SIDEBAR DERECHO: HISTORIAL INMEDIATO */}
+        <div className="w-full xl:w-[400px] bg-white rounded-2xl shadow-soft border border-gray-100 flex flex-col overflow-hidden">
+          <div className="p-5 border-b border-gray-100 flex items-center gap-3 bg-gray-50">
+            <Clock className="w-6 h-6 text-[#4A008B]" />
+            <h3 className="font-bold text-[#343A40] text-lg">Historial Reciente</h3>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+            {ultimosEscaneos.length === 0 ? (
+              <p className="text-sm text-center text-gray-400 mt-10">No hay lecturas registradas.</p>
+            ) : (
+              ultimosEscaneos.map((lectura) => (
+                <div 
+                  key={lectura.id} 
+                  className="p-4 border border-gray-100 rounded-xl flex flex-col gap-2 hover:bg-[#F3E8FF]/30 transition-colors bg-white shadow-sm"
+                >
+                  <div className="flex justify-between items-start">
+                    <span className="font-mono font-black text-[#38006B] text-lg">{lectura.lpn}</span>
+                    <Badge variant={lectura.estado_sap}>{lectura.estado_sap}</Badge>
+                  </div>
+                  <div className="flex justify-between items-center text-xs text-gray-500 font-medium">
+                    <span className="flex items-center gap-1"><MonitorPlay className="w-3 h-3"/> {lectura.linea_origen}</span>
+                    <span>{new Date(lectura.fecha_hora).toLocaleTimeString()}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+      </div>
     </div>
   );
 };
