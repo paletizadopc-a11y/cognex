@@ -11,23 +11,43 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.get('/proxy-camara', lecturasController.proxyCamara);
 
 // ============================================================================
-// 🚀 NUEVA RUTA: Módulo de Reconciliación de Inventario (Excel vs Base de Datos)
-// Usamos upload.single('archivo_excel') para interceptar el archivo en la petición
+// 🚀 MÓDULO: RECONCILIACIÓN DE INVENTARIO (Cruce de Datos)
 // ============================================================================
+
+// 1. Ruta para subir el Excel y realizar la comparación (Cruce)
 router.post('/comparar-excel', verificarToken, upload.single('archivo_excel'), lecturasController.compararConExcel);
 
-// Rutas específicas (Alertas)
+// 2. 🚀 NUEVA RUTA: Validación masiva (Actualización de estados en BD)
+// Esta es la ruta que resuelve el error 404 al hacer clic en "Aprobar y Sincronizar"
+router.post('/validar-masivo', verificarToken, lecturasController.validarMasivo);
+
+// ============================================================================
+// 🚀 GESTIÓN DE ALERTAS
+// ============================================================================
 router.get('/alertas', verificarToken, lecturasController.getAlertas);
 router.patch('/alertas/:id/resolver', verificarToken, lecturasController.resolverAlerta);
 
-// Rutas generales de lecturas
+// ============================================================================
+// 🚀 OPERACIONES GENERALES DE LECTURAS
+// ============================================================================
+
+// Registrar una nueva lectura (Pistola RF o Cámara)
 router.post('/', verificarToken, lecturasController.crearLectura);
 
-// 🐛 CORREGIDO: Llamamos a 'getLecturas' (y no a 'obtenerLecturas')
+// Obtener historial de lecturas (Paginado)
 router.get('/', verificarToken, lecturasController.getLecturas);
 
-// Rutas con parámetros
-// 🐛 CORREGIDO: Llamamos a 'validarLecturaManual' (y no a 'validarLectura')
+// Obtener estadísticas para KPIs
+router.get('/estadisticas', verificarToken, lecturasController.estadisticas);
+
+// ============================================================================
+// 🚀 RUTAS CON PARÁMETROS (:id)
+// ============================================================================
+
+// Validación manual desde el modal del Historial
 router.put('/:id/validar', verificarToken, lecturasController.validarLecturaManual);
+
+// Eliminar un registro específico
+router.delete('/:id', verificarToken, lecturasController.eliminarLectura);
 
 module.exports = router;

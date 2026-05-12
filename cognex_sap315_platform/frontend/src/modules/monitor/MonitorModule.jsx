@@ -8,7 +8,6 @@ export const MonitorModule = () => {
   const [escaneoActual, setEscaneoActual] = useState(null);
   const [horaActual, setHoraActual] = useState(new Date());
   
-  // 🚀 Estados del Escáner RF
   const [scanStatus, setScanStatus] = useState(null);
   const barcodeBuffer = useRef('');
   const lastKeyTime = useRef(Date.now());
@@ -38,7 +37,7 @@ export const MonitorModule = () => {
     fetchEscaneos();
   }, []);
 
-  // 🚀 3. EL MOTOR DEL ESCÁNER ZEBRA INTEGRADO EN EL MONITOR
+  // 🚀 3. EL MOTOR DEL ESCÁNER ZEBRA (Listener de teclado)
   useEffect(() => {
     const handleKeyDown = async (e) => {
       // Evitar conflictos si el usuario escribe en inputs
@@ -74,7 +73,7 @@ export const MonitorModule = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // 🚀 4. ENVIAR A BD Y ACTUALIZAR LA PANTALLA GIGANTE
+  // 🚀 4. ENVIAR A BD Y ACTUALIZAR LA PANTALLA GIGANTE EN MODO "PENDIENTE"
   const procesarCapturaLpn = async (lpnCapturado) => {
     try {
       setScanStatus({ type: 'loading', msg: `Capturando...` });
@@ -84,14 +83,14 @@ export const MonitorModule = () => {
         linea_origen: 'LINEA_01_RF_WEB'
       };
 
-      // Guardamos en la base de datos (SAP315)
+      // Guardamos en la base de datos (Backend ya lo pone en 'pendiente')
       const response = await api.post('/lecturas', payload);
       
       const nuevaLectura = response.lectura || {
         id: Date.now(),
         lpn: lpnCapturado,
         fecha_hora: new Date(),
-        estado_sap: 'ok',
+        estado_sap: 'pendiente', // 🚀 Estado en espera de auditoría
         linea_origen: 'LINEA_01_RF_WEB'
       };
 
@@ -99,7 +98,7 @@ export const MonitorModule = () => {
       setEscaneoActual(nuevaLectura);
       setUltimosEscaneos(prev => [nuevaLectura, ...prev].slice(0, 10));
       
-      setScanStatus({ type: 'success', msg: `¡LPN Registrado!` });
+      setScanStatus({ type: 'success', msg: `¡LPN en cola de Auditoría!` });
 
     } catch (error) {
       setScanStatus({ type: 'error', msg: `Error: LPN ya existe o fallo de BD` });
@@ -146,10 +145,10 @@ export const MonitorModule = () => {
             </span>
           </div>
 
-          {/* Banner de Feedback (Pistolazo) */}
+          {/* Banner de Feedback (Pistolazo en modo PENDIENTE - Color Ámbar) */}
           {scanStatus && (
             <div className={`absolute top-16 left-1/2 -translate-x-1/2 z-20 px-8 py-3 rounded-full flex items-center gap-3 font-bold text-base shadow-2xl animate-in fade-in slide-in-from-top-4
-              ${scanStatus.type === 'success' ? 'bg-[#0AE8C6] text-[#0A0A0A]' : 
+              ${scanStatus.type === 'success' ? 'bg-amber-400 text-black' : // 🚀 Feedback amarillo de "Pendiente"
                 scanStatus.type === 'error' ? 'bg-red-500 text-white' : 
                 'bg-white text-black'}`}
             >
@@ -163,14 +162,14 @@ export const MonitorModule = () => {
           {/* Área Central (Muestra el LPN) */}
           <div className="flex-1 flex items-center justify-center p-8 relative">
             {escaneoActual ? (
-              <div key={escaneoActual.id} className="w-[80%] max-w-2xl border-4 border-[#0AE8C6]/30 border-dashed flex flex-col items-center justify-center py-20 relative bg-[#0AE8C6]/5 animate-in zoom-in duration-300 rounded-2xl">
-                {/* Esquinas del bounding box */}
-                <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-[#0AE8C6]"></div>
-                <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-[#0AE8C6]"></div>
-                <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-[#0AE8C6]"></div>
-                <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-[#0AE8C6]"></div>
+              <div key={escaneoActual.id} className="w-[80%] max-w-2xl border-4 border-amber-500/30 border-dashed flex flex-col items-center justify-center py-20 relative bg-amber-500/5 animate-in zoom-in duration-300 rounded-2xl">
+                {/* Esquinas del bounding box color ámbar */}
+                <div className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-amber-500"></div>
+                <div className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-amber-500"></div>
+                <div className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-amber-500"></div>
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-amber-500"></div>
                 
-                <span className="text-[#0AE8C6] font-bold tracking-widest uppercase mb-4 opacity-80">ÚLTIMO LPN ESCANEADO</span>
+                <span className="text-amber-500 font-bold tracking-widest uppercase mb-4 opacity-80">ÚLTIMO LPN ENVIADO</span>
                 <div className="bg-[#4A008B] text-white px-8 py-4 font-mono text-5xl font-black tracking-widest shadow-2xl shadow-[#4A008B]/50 border-2 border-[#7B1FA2] rounded-xl">
                   {escaneoActual.lpn}
                 </div>
@@ -192,8 +191,13 @@ export const MonitorModule = () => {
             <div className="flex flex-col items-center justify-center">
               <span className="text-xs text-white/50 uppercase tracking-widest font-bold mb-1">Estado de Integración SAP</span>
               {escaneoActual ? (
-                <span className="px-4 py-1.5 bg-[#0AE8C6]/20 text-[#0AE8C6] border border-[#0AE8C6]/50 rounded font-black tracking-widest uppercase text-lg">
-                  {escaneoActual.estado_sap === 'ok' ? 'VALIDADO OK' : escaneoActual.estado_sap}
+                // 🚀 Reflejo del estado PENDIENTE en el footer
+                <span className={`px-4 py-1.5 border rounded font-black tracking-widest uppercase text-lg ${
+                  escaneoActual.estado_sap === 'pendiente' 
+                  ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' 
+                  : 'bg-[#0AE8C6]/20 text-[#0AE8C6] border-[#0AE8C6]/50'
+                }`}>
+                  {escaneoActual.estado_sap === 'pendiente' ? 'PENDIENTE (AUDITORÍA)' : escaneoActual.estado_sap}
                 </span>
               ) : (
                 <span className="text-white/50 font-bold text-lg">---</span>

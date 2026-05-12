@@ -33,14 +33,13 @@ exports.proxyCamara = async (req, res) => {
  */
 exports.crearLectura = async (req, res) => {
   try {
-    // Ahora la RF solo nos manda lpn y linea_origen
     const { lpn, linea_origen } = req.body;
 
     if (!lpn || !linea_origen) {
       return res.status(400).json({ error: 'Faltan campos obligatorios (lpn, linea_origen)' });
     }
 
-    // 🚀 Lógica de Prevención de Duplicados (Cooldown de 5 segundos para el mismo LPN)
+    // 🚀 Prevención de Duplicados (Cooldown de 5 segundos)
     const limiteTiempo = new Date(new Date() - 5000); 
     const lecturaDuplicada = await Lectura.findOne({
       where: {
@@ -56,15 +55,15 @@ exports.crearLectura = async (req, res) => {
       });
     }
 
-    // Guardar en la base de datos (SAP315)
+    // 🚀 EL CAMBIO: Ahora se guarda por defecto en 'pendiente' para futura auditoría
     const nuevaLectura = await Lectura.create({
       lpn,
       linea_origen,
-      estado_sap: 'ok', // Asumimos OK porque la RF no se equivoca al leer
+      estado_sap: 'pendiente',
       fecha_hora: new Date()
     });
 
-    res.status(201).json({ mensaje: 'Lectura registrada', lectura: nuevaLectura });
+    res.status(201).json({ mensaje: 'Lectura registrada en espera de auditoría', lectura: nuevaLectura });
   } catch (error) {
     console.error('❌ Error al crear lectura:', error);
     res.status(500).json({ error: error.message });
@@ -198,10 +197,21 @@ exports.estadisticas = async (req, res) => {
 exports.compararConExcel = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: 'No se ha subido ningún archivo Excel.' });
+      return res.status(400).json({ error: 'No se ha subido ningún archivo Excel o el nombre del campo no coincide.' });
     }
 
-    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+    // 🚀 SOLUCIÓN 2: Lógica a prueba de balas para leer el Excel (Memoria o Disco)
+    let workbook;
+    if (req.file.buffer) {
+      // Si Multer está configurado en memoria (MemoryStorage)
+      workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+    } else if (req.file.path) {
+      // Si Multer está configurado en disco duro (DiskStorage)
+      workbook = xlsx.readFile(req.file.path);
+    } else {
+      return res.status(500).json({ error: 'Formato de recepción de archivo no soportado.' });
+    }
+
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
     const datosEmpresa = xlsx.utils.sheet_to_json(sheet);
@@ -217,13 +227,14 @@ exports.compararConExcel = async (req, res) => {
           [Op.lte]: finDia
         }
       },
-      attributes: ['lpn', 'fecha_hora'] // Limpio
+      attributes: ['lpn', 'fecha_hora'] 
     });
 
     const resultadosCruce = [];
     const lpnEmpresaSet = new Set();
 
     datosEmpresa.forEach((item) => {
+      // Busca la columna LPN sin importar si está en mayúsculas o minúsculas
       const lpnExcel = item.LPN || item.lpn || item.Lpn;
       const ordenExcel = item.ORDEN || item.Orden || item.orden || 'N/A';
 
@@ -284,5 +295,25 @@ exports.compararConExcel = async (req, res) => {
   } catch (error) {
     console.error('❌ Error en el cruce con Excel:', error);
     res.status(500).json({ error: 'Error interno al procesar el archivo Excel.' });
+  }
+};
+
+exports.validarMasivo = async (req, res) => {
+  try {
+    const { lpns } = req.body; // Recibimos el array de LPNs a validar
+
+    if (!lpns || lpns.length === 0) {
+      return res.status(400).json({ error: 'No se enviaron LPNs para validar.' });
+    }
+
+    // Actualizamos masivamente en la base de datos
+    await Lectura.update(
+      { estado_sap: 'ok' }, 
+      { where: { lpn: lpns } }
+    );
+
+    res.json({ mensaje: `${lpns.length} pallets validados correctamente.` });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al actualizar la base de datos.' });
   }
 };
