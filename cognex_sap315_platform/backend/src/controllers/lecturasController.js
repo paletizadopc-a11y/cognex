@@ -3,6 +3,10 @@ const { Op } = require('sequelize');
 const axios = require('axios');
 const xlsx = require('xlsx');
 
+// ============================================================================
+// SERVICIOS EXTERNOS (COGNEX)
+// ============================================================================
+
 exports.proxyCamara = async (req, res) => {
   try {
     const { COGNEX_IP, COGNEX_PORT_HMI, COGNEX_USER, COGNEX_PASS } = process.env;
@@ -23,14 +27,15 @@ exports.proxyCamara = async (req, res) => {
     res.set('Content-Type', 'image/jpeg');
     res.send(response.data);
   } catch (error) {
-    console.error('❌ Error en Proxy:', error.message);
-    res.status(404).send('Servicio no disponible');
+    console.error('❌ Error en Proxy Cognex:', error.message);
+    res.status(404).send('Servicio de cámara no disponible');
   }
 };
 
-/**
- * Crea una nueva lectura desde la Pistola RF.
- */
+// ============================================================================
+// GESTIÓN DE LECTURAS INDIVIDUALES
+// ============================================================================
+
 exports.crearLectura = async (req, res) => {
   try {
     const { lpn, linea_origen } = req.body;
@@ -39,7 +44,7 @@ exports.crearLectura = async (req, res) => {
       return res.status(400).json({ error: 'Faltan campos obligatorios (lpn, linea_origen)' });
     }
 
-    // 🚀 Prevención de Duplicados (Cooldown de 5 segundos)
+    // Cooldown de 5 segundos para evitar duplicados accidentales de la cámara o pistola
     const limiteTiempo = new Date(new Date() - 5000); 
     const lecturaDuplicada = await Lectura.findOne({
       where: {
@@ -55,7 +60,6 @@ exports.crearLectura = async (req, res) => {
       });
     }
 
-    // 🚀 EL CAMBIO: Ahora se guarda por defecto en 'pendiente' para futura auditoría
     const nuevaLectura = await Lectura.create({
       lpn,
       linea_origen,
@@ -63,25 +67,19 @@ exports.crearLectura = async (req, res) => {
       fecha_hora: new Date()
     });
 
-    res.status(201).json({ mensaje: 'Lectura registrada en espera de auditoría', lectura: nuevaLectura });
+    res.status(201).json({ mensaje: 'Lectura registrada correctamente', lectura: nuevaLectura });
   } catch (error) {
-    console.error('❌ Error al crear lectura:', error);
     res.status(500).json({ error: error.message });
   }
 };
 
-/**
- * 🚀 AQUÍ ESTABA EL ERROR 500: Obligamos a pedir solo las columnas existentes
- */
 exports.getLecturas = async (req, res) => {
   try {
     const { pagina = 1, limite = 20, estado } = req.query;
     const offset = (pagina - 1) * limite;
     
     const whereClause = {};
-    if (estado) {
-      whereClause.estado_sap = estado;
-    }
+    if (estado) whereClause.estado_sap = estado;
 
     const lecturas = await Lectura.findAndCountAll({
       where: whereClause,
@@ -108,9 +106,7 @@ exports.validarLecturaManual = async (req, res) => {
     const { lpn_corregido, usuario_id } = req.body;
 
     const lectura = await Lectura.findByPk(id);
-    if (!lectura) {
-      return res.status(404).json({ error: 'Lectura no encontrada' });
-    }
+    if (!lectura) return res.status(404).json({ error: 'Lectura no encontrada' });
 
     lectura.lpn = lpn_corregido;
     lectura.estado_sap = 'ok';
@@ -123,11 +119,13 @@ exports.validarLecturaManual = async (req, res) => {
   }
 };
 
-/**
- * 🚀 AQUÍ TAMBIÉN EVITAMOS EL ERROR DE COLUMNAS INEXISTENTES
- */
+// ============================================================================
+// MÓDULO DE ALERTAS E INCIDENCIAS
+// ============================================================================
+
 exports.getAlertas = async (req, res) => {
   try {
+    // Las alertas incluyen tanto errores de cámara como faltantes de auditoría
     const alertas = await Lectura.findAll({
       where: { estado_sap: ['error', 'pendiente'] },
       attributes: ['id', 'lpn', 'linea_origen', 'estado_sap', 'fecha_hora'],
@@ -159,7 +157,7 @@ exports.resolverAlerta = async (req, res) => {
     lectura.estado_sap = 'ok';
     await lectura.save();
 
-    res.json({ mensaje: 'Alerta resuelta con éxito' });
+    res.json({ mensaje: 'Incidencia resuelta satisfactoriamente' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -169,11 +167,9 @@ exports.eliminarLectura = async (req, res) => {
   try {
     const { id } = req.params;
     const lectura = await Lectura.findByPk(id);
-    
     if (!lectura) return res.status(404).json({ error: 'Lectura no encontrada' });
-
     await lectura.destroy();
-    res.json({ mensaje: 'Lectura eliminada permanentemente' });
+    res.json({ mensaje: 'Registro eliminado permanentemente' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -183,137 +179,138 @@ exports.estadisticas = async (req, res) => {
   try {
     const total = await Lectura.count();
     const ok = await Lectura.count({ where: { estado_sap: 'ok' } });
-    const errores = await Lectura.count({ where: { estado_sap: ['error', 'pendiente'] } });
+    const pendientes = await Lectura.count({ where: { estado_sap: 'pendiente' } });
+    const errores = await Lectura.count({ where: { estado_sap: 'error' } });
 
-    res.json({ total, ok, errores });
+    res.json({ total, ok, pendientes, errores });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
 // ============================================================================
-// MÓDULO: RECONCILIACIÓN DE INVENTARIO (LPN PURGE)
+// MÓDULO: RECONCILIACIÓN DE INVENTARIO (AUDITORÍA EXCEL SOFTYS)
 // ============================================================================
+
+/**
+ * 🚀 COMPARACIÓN INTELIGENTE: Identifica duplicados, alertas previas y matches.
+ */
 exports.compararConExcel = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No se ha subido ningún archivo Excel o el nombre del campo no coincide.' });
-    }
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo.' });
 
-    // 🚀 SOLUCIÓN 2: Lógica a prueba de balas para leer el Excel (Memoria o Disco)
-    let workbook;
-    if (req.file.buffer) {
-      // Si Multer está configurado en memoria (MemoryStorage)
-      workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
-    } else if (req.file.path) {
-      // Si Multer está configurado en disco duro (DiskStorage)
-      workbook = xlsx.readFile(req.file.path);
-    } else {
-      return res.status(500).json({ error: 'Formato de recepción de archivo no soportado.' });
-    }
+    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const dataExcel = xlsx.utils.sheet_to_json(sheet, { defval: "" });
 
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const datosEmpresa = xlsx.utils.sheet_to_json(sheet);
+    if (dataExcel.length === 0) return res.status(400).json({ error: 'El archivo Excel está vacío.' });
 
-    const fechaAnalisis = req.body.fecha_analisis || new Date().toISOString().split('T')[0];
-    const inicioDia = new Date(`${fechaAnalisis}T00:00:00.000Z`);
-    const finDia = new Date(`${fechaAnalisis}T23:59:59.999Z`);
+    const encabezados = Object.keys(dataExcel[0]);
+    const colLPN = encabezados.find(h => /LPN|PALLET/i.test(h));
+    const colOrden = encabezados.find(h => /ORDEN|ENTREGA/i.test(h));
 
-    const nuestrasLecturas = await Lectura.findAll({
-      where: {
-        fecha_hora: {
-          [Op.gte]: inicioDia,
-          [Op.lte]: finDia
-        }
-      },
-      attributes: ['lpn', 'fecha_hora'] 
+    if (!colLPN) return res.status(400).json({ error: 'No se encontró la columna LPN en el archivo.' });
+
+    const lpnsExcel = [...new Set(dataExcel.map(fila => String(fila[colLPN]).trim()).filter(l => l !== ""))];
+
+    // 🚀 SINCRONÍA: Buscamos TODOS los estados actuales de estos LPN en la base de datos
+    const lecturasExistentes = await Lectura.findAll({
+      where: { lpn: { [Op.in]: lpnsExcel } },
+      attributes: ['lpn', 'estado_sap']
     });
 
-    const resultadosCruce = [];
-    const lpnEmpresaSet = new Set();
+    // Mapa de búsqueda rápida
+    const estadoMapa = new Map(lecturasExistentes.map(l => [l.lpn, l.estado_sap]));
 
-    datosEmpresa.forEach((item) => {
-      // Busca la columna LPN sin importar si está en mayúsculas o minúsculas
-      const lpnExcel = item.LPN || item.lpn || item.Lpn;
-      const ordenExcel = item.ORDEN || item.Orden || item.orden || 'N/A';
+    const resultados = dataExcel.map(fila => {
+      const lpn = String(fila[colLPN]).trim();
+      const estadoActual = estadoMapa.get(lpn);
 
-      if (!lpnExcel) return;
+      let estadoCruce = 'No Detectado';
+      let detalle = 'Este LPN no figura en las lecturas de cámara o pistola.';
 
-      const lpnStr = String(lpnExcel).trim();
-      lpnEmpresaSet.add(lpnStr);
-
-      const coincidencia = nuestrasLecturas.find((l) => String(l.lpn) === lpnStr);
-
-      if (coincidencia) {
-        resultadosCruce.push({
-          lpn: lpnStr,
-          orden: ordenExcel,
-          estado: 'Match Perfecto',
-          fecha_lectura: coincidencia.fecha_hora,
-          detalle: 'El pallet figura en el Excel y fue leído correctamente.'
-        });
-      } else {
-        resultadosCruce.push({
-          lpn: lpnStr,
-          orden: ordenExcel,
-          estado: 'Faltante (Miss)',
-          fecha_lectura: null,
-          detalle: 'El pallet está en la planificación, pero la cámara NO lo detectó.'
-        });
+      if (estadoActual === 'ok') {
+          estadoCruce = 'Ya Validado';
+          detalle = 'Este pallet ya fue auditado y procesado exitosamente.';
+      } else if (estadoActual === 'pendiente') {
+          estadoCruce = 'Match Perfecto';
+          detalle = 'Listo para sincronizar con SAP 315.';
+      } else if (estadoActual === 'error') {
+          estadoCruce = 'En Alerta';
+          detalle = 'Ya existe una incidencia activa en el Centro de Alertas.';
       }
+
+      return {
+        lpn,
+        orden: colOrden ? String(fila[colOrden]).trim() : 'N/A',
+        estado: estadoCruce,
+        detalle
+      };
     });
 
-    nuestrasLecturas.forEach((lectura) => {
-      const lpnLeido = lectura.lpn;
-      
-      if (lpnLeido && !lpnEmpresaSet.has(String(lpnLeido))) {
-        resultadosCruce.push({
-          lpn: lpnLeido,
-          orden: 'Desconocida',
-          estado: 'Extra (Ghost)',
-          fecha_lectura: lectura.fecha_hora,
-          detalle: 'Pallet leído en la cinta, pero que NO figura en el archivo Excel.'
-        });
-      }
-    });
-
-    const resumen = {
-      total_excel: lpnEmpresaSet.size,
-      total_sap315: nuestrasLecturas.length,
-      match_perfecto: resultadosCruce.filter(r => r.estado === 'Match Perfecto').length,
-      faltantes: resultadosCruce.filter(r => r.estado === 'Faltante (Miss)').length,
-      extras: resultadosCruce.filter(r => r.estado === 'Extra (Ghost)').length
-    };
-
-    res.json({
-      mensaje: 'Reconciliación de inventario completada',
-      resumen,
-      resultados: resultadosCruce
+    res.json({ 
+      resultados, 
+      resumen: {
+        total_excel: dataExcel.length,
+        pendientes_validar: resultados.filter(r => r.estado === 'Match Perfecto').length,
+        ya_procesados: resultados.filter(r => r.estado === 'Ya Validado').length,
+        incidencias_previas: resultados.filter(r => r.estado === 'En Alerta').length,
+        nuevas_alertas: resultados.filter(r => r.estado === 'No Detectado').length
+      } 
     });
 
   } catch (error) {
-    console.error('❌ Error en el cruce con Excel:', error);
-    res.status(500).json({ error: 'Error interno al procesar el archivo Excel.' });
+    console.error('❌ Error en Comparación Excel:', error);
+    res.status(500).json({ error: 'Fallo al procesar el archivo Excel de Softys.' });
   }
 };
 
+/**
+ * 🚀 VALIDACIÓN MASIVA BLINDADA: Evita duplicar alertas y registros ya validados.
+ */
 exports.validarMasivo = async (req, res) => {
   try {
-    const { lpns } = req.body; // Recibimos el array de LPNs a validar
+    const { resultados } = req.body;
 
-    if (!lpns || lpns.length === 0) {
-      return res.status(400).json({ error: 'No se enviaron LPNs para validar.' });
+    if (!resultados || !Array.isArray(resultados)) {
+      return res.status(400).json({ error: 'No se recibió el detalle de auditoría.' });
     }
 
-    // Actualizamos masivamente en la base de datos
-    await Lectura.update(
-      { estado_sap: 'ok' }, 
-      { where: { lpn: lpns } }
-    );
+    // 1. Filtrar los que realmente deben pasar a 'ok' (solo si estaban 'pendiente')
+    const lpnsParaOk = resultados
+      .filter(r => r.estado === 'Match Perfecto')
+      .map(r => r.lpn);
 
-    res.json({ mensaje: `${lpns.length} pallets validados correctamente.` });
+    if (lpnsParaOk.length > 0) {
+      await Lectura.update(
+        { estado_sap: 'ok' },
+        { where: { lpn: lpnsParaOk, estado_sap: 'pendiente' } }
+      );
+    }
+
+    // 2. Filtrar los que realmente son nuevos errores (no existen en la BD)
+    const lpnsParaAlerta = resultados.filter(r => r.estado === 'No Detectado');
+
+    if (lpnsParaAlerta.length > 0) {
+      const alertasNuevas = lpnsParaAlerta.map(f => ({
+        lpn: f.lpn,
+        linea_origen: 'AUDITORIA_SISTEMA',
+        estado_sap: 'error',
+        fecha_hora: new Date(),
+        observaciones: `AUTO-ALERTA: El sistema reporta este pallet (Orden: ${f.orden}) como no detectado.`
+      }));
+
+      await Lectura.bulkCreate(alertasNuevas);
+    }
+
+    res.json({ 
+      mensaje: 'Proceso de sincronización terminado.',
+      validados: lpnsParaOk.length,
+      alertasCreadas: lpnsParaAlerta.length
+    });
+
   } catch (error) {
-    res.status(500).json({ error: 'Error al actualizar la base de datos.' });
+    console.error('❌ Error en Validación Masiva:', error);
+    res.status(500).json({ error: 'Error interno al sincronizar la base de datos.' });
   }
 };
