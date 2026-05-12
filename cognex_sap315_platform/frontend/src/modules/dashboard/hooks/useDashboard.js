@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../../shared/services/api';
 
 export const useDashboard = () => {
@@ -6,9 +6,9 @@ export const useDashboard = () => {
     lecturas: [],
     alertas: [],
     kpis: {
-      totalHoy: 0,
-      validadas: 0,
-      pendientes: 0, // Nueva métrica agregada
+      total: 0,
+      ok: 0,
+      pendientes: 0,
       rechazadas: 0,
       errores: 0,
       eficiencia: 0
@@ -17,9 +17,10 @@ export const useDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
-      // Hacemos dos peticiones simultáneas usando Promise.all para no perder velocidad
+      setLoading(true);
+      // Hacemos dos peticiones simultáneas: una para la tabla (10) y otra para cálculos (todos)
       const [tablaRes, kpisRes] = await Promise.all([
         api.get('/lecturas?limite=10'),
         api.get('/lecturas?limite=10000')
@@ -28,39 +29,46 @@ export const useDashboard = () => {
       const lecturasTabla = tablaRes.lecturas || [];
       const lecturasTurno = kpisRes.lecturas || [];
 
-      // Calculamos los KPIs basándonos en la lista COMPLETA del turno
-      const validadas = lecturasTurno.filter(l => l.estado_sap === 'validado').length;
-      const pendientes = lecturasTurno.filter(l => l.estado_sap === 'pendiente').length; // Conteo de pendientes
+      // 🚀 CÁLCULO DE KPIs SINCRONIZADO CON EL BACKEND
+      // Filtramos por los strings exactos que usa tu base de datos
+      const validadas = lecturasTurno.filter(l => l.estado_sap === 'ok').length;
+      const pendientes = lecturasTurno.filter(l => l.estado_sap === 'pendiente').length;
       const rechazadas = lecturasTurno.filter(l => l.estado_sap === 'rechazado').length;
       const errores = lecturasTurno.filter(l => l.estado_sap === 'error').length;
       const total = kpisRes.total || lecturasTurno.length;
 
       setData({
         lecturas: lecturasTabla,
-        alertas: [], 
+        alertas: [],
         kpis: {
-          totalHoy: total,
-          validadas,
-          pendientes, // Inyectamos pendientes al objeto
-          rechazadas,
-          errores,
+          total: total,
+          ok: validadas,
+          pendientes: pendientes,
+          rechazadas: rechazadas,
+          errores: errores,
           eficiencia: total > 0 ? Math.round((validadas / total) * 100) : 0
         }
       });
       setError(null);
     } catch (err) {
-      console.error(err);
-      setError('No se pudieron cargar los datos de la planta.');
+      console.error('❌ Error en useDashboard:', err);
+      setError('No se pudieron cargar los datos de la base de datos SAP 315.');
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 15000);
-    return () => clearInterval(interval);
   }, []);
 
-  return { ...data, loading, error, refetch: fetchDashboardData };
+  // Carga inicial al montar el componente
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  return {
+    lecturas: data.lecturas,
+    alertas: data.alertas,
+    kpis: data.kpis,
+    loading,
+    error,
+    refetch: fetchDashboardData 
+  };
 };
