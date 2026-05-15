@@ -17,15 +17,22 @@ router.get('/proxy-camara', lecturasController.proxyCamara);
 // 1. Ruta para subir el Excel y realizar la comparación (Cruce)
 router.post('/comparar-excel', verificarToken, upload.single('archivo_excel'), lecturasController.compararConExcel);
 
-// 2. 🚀 NUEVA RUTA: Validación masiva (Actualización de estados en BD)
-// Esta es la ruta que resuelve el error 404 al hacer clic en "Aprobar y Sincronizar"
+// 2. Validación masiva (Actualización de estados en BD)
 router.post('/validar-masivo', verificarToken, lecturasController.validarMasivo);
 
 // ============================================================================
 // 🚀 GESTIÓN DE ALERTAS
 // ============================================================================
+
+// Obtener alertas activas
 router.get('/alertas', verificarToken, lecturasController.getAlertas);
+
+// Resolver una alerta individual
 router.patch('/alertas/:id/resolver', verificarToken, lecturasController.resolverAlerta);
+
+// 🚀 NUEVA RUTA: Borrar todo el historial de alertas
+// Esta ruta permite la limpieza masiva solicitada para el módulo de incidencias.
+router.delete('/alertas/todas', verificarToken, lecturasController.eliminarTodasAlertas);
 
 // ============================================================================
 // 🚀 OPERACIONES GENERALES DE LECTURAS

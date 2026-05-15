@@ -42,7 +42,7 @@ exports.proxyCamara = async (req, res) => {
 
 /**
  * Registra una nueva lectura (LPN) detectada por la cámara.
- * Implementa un cooldown de 5 segundos para evitar duplicidad[cite: 30].
+ * Implementa un cooldown de 5 segundos para evitar duplicidad.
  */
 exports.crearLectura = async (req, res) => {
   try {
@@ -139,7 +139,7 @@ exports.getAlertas = async (req, res) => {
 };
 
 /**
- * Resuelve una incidencia validándola físicamente[cite: 24].
+ * Resuelve una incidencia validándola físicamente.
  */
 exports.resolverAlerta = async (req, res) => {
   try {
@@ -156,7 +156,7 @@ exports.resolverAlerta = async (req, res) => {
 };
 
 /**
- * Elimina un registro de lectura.
+ * Elimina un registro de lectura individual.
  */
 exports.eliminarLectura = async (req, res) => {
   try {
@@ -169,7 +169,24 @@ exports.eliminarLectura = async (req, res) => {
 };
 
 /**
- * Métricas para el Dashboard principal[cite: 6].
+ * Borrar todas las incidencias (Alertas) del historial.
+ */
+exports.eliminarTodasAlertas = async (req, res) => {
+  try {
+    await Lectura.destroy({
+      where: {},
+      truncate: false 
+    });
+
+    res.json({ mensaje: "Todas las incidencias han sido eliminadas permanentemente." });
+  } catch (error) {
+    console.error("Error al vaciar alertas:", error.message);
+    res.status(500).json({ error: "Error interno al intentar vaciar el historial." });
+  }
+};
+
+/**
+ * Métricas para el Dashboard principal.
  */
 exports.estadisticas = async (req, res) => {
   try {
@@ -184,12 +201,12 @@ exports.estadisticas = async (req, res) => {
 };
 
 // ============================================================================
-// MÓDULO: AUDITORÍA EXCEL SOFTYS (VERSIÓN SIMPLIFICADA)
+// MÓDULO: AUDITORÍA EXCEL SOFTYS (VERSIÓN ROBUSTA)
 // ============================================================================
 
 /**
- * Cruza el Excel de planificación con la BD[cite: 14].
- * Limpia automáticamente "filas fantasma" e identifica columnas dinámicas.
+ * Cruza el Excel de planificación con la BD.
+ * Identifica LPNs existentes en cualquier estado para validación automática.
  */
 exports.compararConExcel = async (req, res) => {
   try {
@@ -199,7 +216,6 @@ exports.compararConExcel = async (req, res) => {
     let dataExcel = [];
     let sheetNameEncontrada = "";
 
-    // 1. Escaneo multihonja 
     for (const name of workbook.SheetNames) {
       const sheet = workbook.Sheets[name];
       const jsonData = xlsx.utils.sheet_to_json(sheet, { defval: "" });
@@ -209,7 +225,6 @@ exports.compararConExcel = async (req, res) => {
         const colLPN = encabezados.find(h => /LPN|PALLET|ETIQUETA/i.test(h));
         
         if (colLPN) {
-          // 🚀 Limpieza de filas vacías para evitar el error del millón de registros
           dataExcel = jsonData.filter(row => String(row[colLPN]).trim() !== "");
           sheetNameEncontrada = name;
           break; 
@@ -223,7 +238,6 @@ exports.compararConExcel = async (req, res) => {
     const colLPN = encabezados.find(h => /LPN|PALLET|ETIQUETA/i.test(h));
     const colOrden = encabezados.find(h => /ORDEN|ENTREGA|FABRICACI[OÓ]N/i.test(h));
 
-    // 2. Cruce con BD
     const lpnsEnArchivo = [...new Set(dataExcel.map(fila => String(fila[colLPN]).trim()))];
     const existentes = await Lectura.findAll({ 
       where: { lpn: { [Op.in]: lpnsEnArchivo } },
@@ -232,20 +246,19 @@ exports.compararConExcel = async (req, res) => {
     
     const estadoMapa = new Map(existentes.map(l => [l.lpn, l.estado_sap]));
 
-    // 3. Resultados de reconciliación
     const resultados = dataExcel.map(fila => {
       const lpn = String(fila[colLPN]).trim();
       const estBD = estadoMapa.get(lpn);
       
-      let estadoCruce = 'No Detectado'; // [cite: 19]
-      let detalle = 'LPN no figura en lecturas del sistema.';
+      let estadoCruce = 'No Detectado'; 
+      let detalle = 'El LPN no ha sido registrado por la cámara.';
 
       if (estBD === 'ok') {
-        estadoCruce = 'Ya Validado'; // [cite: 18]
-        detalle = 'Auditado exitosamente.';
-      } else if (estBD === 'pendiente') {
-        estadoCruce = 'Match Perfecto'; // [cite: 17]
-        detalle = 'Listo para sincronizar.';
+        estadoCruce = 'Ya Validado'; 
+        detalle = 'Este registro ya fue auditado previamente.';
+      } else if (estBD) {
+        estadoCruce = 'Match Perfecto'; 
+        detalle = `Detectado en sistema (${estBD.toUpperCase()}). Listo para validar.`;
       }
 
       return {
@@ -272,7 +285,8 @@ exports.compararConExcel = async (req, res) => {
 };
 
 /**
- * Sincronización final de auditoría[cite: 20].
+ * 🚀 SOLUCIÓN AL ERROR 500: Validación masiva con manejo de duplicidad.
+ * Sincroniza los matches y crea alertas para los faltantes ignorando duplicados existentes.
  */
 exports.validarMasivo = async (req, res) => {
   try {
@@ -281,23 +295,37 @@ exports.validarMasivo = async (req, res) => {
       return res.status(400).json({ error: 'Detalle no recibido.' });
     }
     
+    // 1. Validar los que hicieron match (Pasar a 'ok')
     const lpnsOk = resultados.filter(r => r.estado === 'Match Perfecto').map(r => r.lpn);
     if (lpnsOk.length > 0) {
-      await Lectura.update({ estado_sap: 'ok' }, { where: { lpn: lpnsOk, estado_sap: 'pendiente' } });
+      await Lectura.update({ estado_sap: 'ok' }, { where: { lpn: lpnsOk } });
     }
 
+    // 2. Insertar los faltantes con protección de duplicidad (ignoreDuplicates: true)
     const noDet = resultados.filter(r => r.estado === 'No Detectado');
     if (noDet.length > 0) {
+      /**
+       * Se utiliza ignoreDuplicates para evitar errores de llave única (PK/Unique)
+       * si un LPN ya existe en la base de datos de una sesión previa.
+       */
       await Lectura.bulkCreate(noDet.map(f => ({
         lpn: f.lpn, 
-        linea_origen: 'AUDITORIA', 
+        linea_origen: 'AUDITORIA_SISTEMA', 
         estado_sap: 'error', 
         fecha_hora: new Date(),
-        observaciones: `Faltante en auditoría (Orden: ${f.orden})`
-      }))); // Genera alertas automáticas [cite: 20, 22]
+        observaciones: `Faltante detectado en Auditoría (Orden: ${f.orden})`
+      })), { 
+        ignoreDuplicates: true 
+      }); 
     }
-    res.json({ mensaje: 'Sincronización terminada' });
+
+    res.json({ 
+      mensaje: `Sincronización terminada. ${lpnsOk.length} registros validados.`,
+      validados: lpnsOk.length,
+      alertas_creadas: noDet.length
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error(">>> [ERROR SINCRONIZACIÓN]:", error.message);
+    res.status(500).json({ error: 'Error al procesar la carga masiva. Verifique duplicidad de LPNs.' });
   }
 };

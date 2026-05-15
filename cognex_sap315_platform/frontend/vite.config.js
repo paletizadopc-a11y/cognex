@@ -4,7 +4,10 @@ import tailwindcss from 'tailwindcss'
 import autoprefixer from 'autoprefixer'
 
 export default defineConfig({
+  base: './',
+
   plugins: [react()],
+
   css: {
     postcss: {
       plugins: [
@@ -12,5 +15,9 @@ export default defineConfig({
         autoprefixer,
       ],
     },
+  },
+
+  build: {
+    outDir: 'dist',
   },
 })

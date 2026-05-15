@@ -26,7 +26,7 @@ export const AuditoriaModule = () => {
   const [auditoriaCompletada, setAuditoriaCompletada] = useState(false);
 
   // Configuración de URL dinámica para la API basada en el entorno
-  const API_URL = import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', '') || 'http://localhost:3000';
+  const API_URL = '';
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);

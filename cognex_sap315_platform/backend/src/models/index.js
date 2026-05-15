@@ -16,7 +16,19 @@ const Usuario = sequelize.define('usuarios', {
   activo: { type: DataTypes.BOOLEAN, defaultValue: true },
   ultimo_login: DataTypes.DATE,
   fecha_creacion: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  fecha_actualizacion: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+  fecha_actualizacion: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  
+  // 🚀 CAMPOS NUEVOS PARA POLÍTICA DE SEGURIDAD (7 DÍAS)
+  // Almacena la fecha exacta en la que la clave temporal dejará de ser válida.
+  password_expires_at: { 
+    type: DataTypes.DATE, 
+    allowNull: true 
+  },
+  // Indica si el usuario debe cambiar su contraseña para que sea permanente.
+  es_password_temporal: { 
+    type: DataTypes.BOOLEAN, 
+    defaultValue: true 
+  }
 }, { timestamps: false });
 
 // 🚀 TABLA LECTURAS ACTUALIZADA (Solo LPN y campos esenciales)
@@ -80,7 +92,6 @@ const Configuracion = sequelize.define('configuraciones', {
 Usuario.belongsTo(Rol, { foreignKey: 'rol_id', as: 'rol' });
 Rol.hasMany(Usuario, { foreignKey: 'rol_id', as: 'usuarios' });
 
-// Se eliminó la relación de camara_id con Lectura porque ya no existe en la base de datos
 Lectura.belongsTo(Usuario, { foreignKey: 'usuario_validador_id', as: 'validador' });
 
 LogAlerta.belongsTo(Lectura, { foreignKey: 'lectura_id' });

@@ -9,7 +9,8 @@ import {
   ShieldAlert,
   Info,
   CheckCircle2,
-  AlertOctagon
+  AlertOctagon,
+  Eraser
 } from 'lucide-react';
 import { api } from '../../shared/services/api';
 import { Badge } from '../../shared/components/Badge';
@@ -22,9 +23,8 @@ export const AlertasModule = () => {
   const [procesandoId, setProcesandoId] = useState(null);
 
   /**
-   * 🚀 PERSISTENCIA DE DATOS:
-   * Los registros se consultan directamente al servidor, asegurando que
-   * la información persista entre sesiones y cambios de módulo.
+   * 🚀 CARGA DE DATOS:
+   * Consulta al servidor para obtener las incidencias actuales.
    */
   const fetchAlertas = useCallback(async () => {
     try {
@@ -45,8 +45,8 @@ export const AlertasModule = () => {
   }, [fetchAlertas]);
 
   /**
-   * 🚀 VALIDAR LPN (Sincronización OK):
-   * Mueve el registro del estado de error a validado en la base de datos.
+   * 🚀 ACCIÓN 1: VALIDAR LPN
+   * Resuelve la incidencia marcándola como validada en la BD.
    */
   const handleValidar = async (id) => {
     if (!window.confirm("¿Confirmar validación física y cierre de esta incidencia?")) return;
@@ -62,11 +62,11 @@ export const AlertasModule = () => {
   };
 
   /**
-   * 🚀 ELIMINAR REGISTRO:
-   * Borra permanentemente el LPN de la trazabilidad del sistema.
+   * 🚀 ACCIÓN 2: ELIMINAR REGISTRO INDIVIDUAL
+   * Borra permanentemente un LPN específico.
    */
   const handleEliminar = async (id) => {
-    if (!window.confirm("¿Eliminar este registro permanentemente de la base de datos? Esta acción no se puede deshacer.")) return;
+    if (!window.confirm("¿Eliminar este registro permanentemente de la base de datos?")) return;
     try {
       setProcesandoId(id);
       await api.delete(`/lecturas/${id}`);
@@ -75,6 +75,29 @@ export const AlertasModule = () => {
       alert("Error al intentar eliminar el registro.");
     } finally {
       setProcesandoId(null);
+    }
+  };
+
+  /**
+   * 🚀 ACCIÓN 3 (MEJORA): BORRAR TODAS LAS ALERTAS
+   * Limpia completamente la tabla de incidencias.
+   */
+  const handleEliminarTodas = async () => {
+    const confirmacionPrincipal = window.confirm("¡ATENCIÓN! Estás a punto de borrar TODAS las incidencias del historial. Esta acción no se puede deshacer. ¿Deseas continuar?");
+    if (!confirmacionPrincipal) return;
+
+    const confirmacionSeguridad = window.confirm("¿Estás absolutamente seguro? Se perderá toda la trazabilidad de las alertas actuales.");
+    if (!confirmacionSeguridad) return;
+
+    try {
+      setLoading(true);
+      await api.delete('/lecturas/alertas/todas');
+      setAlertas([]);
+      alert("Historial de incidencias vaciado correctamente.");
+    } catch (err) {
+      alert("Error técnico al intentar vaciar el historial.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -101,12 +124,26 @@ export const AlertasModule = () => {
           <p className="text-[#555555]">Gestión de discrepancias en lecturas Cognex y Auditorías Softys.</p>
         </div>
 
-        <button 
-          onClick={fetchAlertas}
-          className="p-4 bg-white border border-gray-200 rounded-2xl hover:bg-gray-50 text-[#4A008B] transition-all shadow-soft"
-        >
-          <RefreshCcw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-        </button>
+        <div className="flex gap-3">
+          {/* BOTÓN: BORRAR TODO */}
+          <button 
+            onClick={handleEliminarTodas}
+            disabled={alertas.length === 0 || loading}
+            className="flex items-center gap-2 px-6 py-3 bg-red-50 text-red-600 border border-red-100 rounded-2xl hover:bg-red-600 hover:text-white transition-all shadow-sm disabled:opacity-30"
+            title="Vaciar todo el historial"
+          >
+            <Eraser className="w-5 h-5" />
+            <span className="font-black text-[10px] uppercase tracking-widest">Borrar Todo</span>
+          </button>
+
+          {/* BOTÓN: REFRESCAR */}
+          <button 
+            onClick={fetchAlertas}
+            className="p-4 bg-white border border-gray-200 rounded-2xl hover:bg-gray-50 text-[#4A008B] transition-all shadow-soft"
+          >
+            <RefreshCcw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
 
       <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-soft mb-6 flex flex-col md:flex-row gap-4">
