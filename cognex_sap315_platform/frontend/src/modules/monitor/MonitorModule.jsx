@@ -37,6 +37,49 @@ export const MonitorModule = () => {
     fetchEscaneos();
   }, []);
 
+  // ============================================================================
+  // 🔒 CONTROL DE PANTALLA ACTIVA (SCREEN WAKE LOCK API)
+  // Evita que el computador de la línea suspenda o apague el monitor
+  // ============================================================================
+  useEffect(() => {
+    let wakeLock = null;
+
+    const solicitarWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          console.log('🔒 [WAKE LOCK] Bloqueo de suspensión activo. Pantalla asegurada.');
+        } else {
+          console.warn('⚠️ El navegador actual no soporta Screen Wake Lock API.');
+        }
+      } catch (err) {
+        console.error(`❌ Fallo al inicializar el control de pantalla activa: ${err.message}`);
+      }
+    };
+
+    // Solicitar bloqueo al montar el módulo
+    solicitarWakeLock();
+
+    // Re-solicitar el bloqueo si el operador minimizó el navegador y volvió a entrar
+    const controlarCambioVisibilidad = () => {
+      if (wakeLock !== null && document.visibilityState === 'visible') {
+        solicitarWakeLock();
+      }
+    };
+
+    document.addEventListener('visibilitychange', controlarCambioVisibilidad);
+
+    // Limpieza al salir de la pantalla para restablecer las políticas de Windows
+    return () => {
+      if (wakeLock !== null) {
+        wakeLock.release();
+        wakeLock = null;
+        console.log('🔓 [WAKE LOCK] Bloqueo liberado de forma segura.');
+      }
+      document.removeEventListener('visibilitychange', controlarCambioVisibilidad);
+    };
+  }, []);
+
   // 🚀 3. EL MOTOR DEL ESCÁNER ZEBRA (Listener de teclado)
   useEffect(() => {
     const handleKeyDown = async (e) => {
@@ -149,7 +192,7 @@ export const MonitorModule = () => {
           {scanStatus && (
             <div className={`absolute top-16 left-1/2 -translate-x-1/2 z-20 px-8 py-3 rounded-full flex items-center gap-3 font-bold text-base shadow-2xl animate-in fade-in slide-in-from-top-4
               ${scanStatus.type === 'success' ? 'bg-amber-400 text-black' : // 🚀 Feedback amarillo de "Pendiente"
-                scanStatus.type === 'error' ? 'bg-red-500 text-white' : 
+                scanStatus.type === 'error' ? 'bg-red-500 text-white' :
                 'bg-white text-black'}`}
             >
               {scanStatus.type === 'success' && <CheckCircle2 className="w-6 h-6" />}
@@ -189,7 +232,7 @@ export const MonitorModule = () => {
               <span className="text-white font-bold text-xl tracking-wider">{escaneoActual ? escaneoActual.linea_origen : '---'}</span>
             </div>
             <div className="flex flex-col items-center justify-center">
-              <span className="text-xs text-white/50 uppercase tracking-widest font-bold mb-1">Estado de Integración SAP</span>
+              <span className="text-xs text-white/50 uppercase tracking-widest font-bold mb-1">Estado de Integration SAP</span>
               {escaneoActual ? (
                 // 🚀 Reflejo del estado PENDIENTE en el footer
                 <span className={`px-4 py-1.5 border rounded font-black tracking-widest uppercase text-lg ${
@@ -240,3 +283,5 @@ export const MonitorModule = () => {
     </div>
   );
 };
+
+export default MonitorModule;

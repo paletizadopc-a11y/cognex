@@ -4,57 +4,125 @@ const multer = require('multer');
 const lecturasController = require('../controllers/lecturasController');
 const { verificarToken } = require('../middleware/authMiddleware');
 
+// 🚀 IMPORTACIÓN DEL MIDDLEWARE DE CONTROL DE ACCESOS POR ROL
+const { verificarRol } = require('../middleware/roles');
+
 // Configuración de Multer para almacenar el Excel temporalmente en la memoria RAM
 const upload = multer({ storage: multer.memoryStorage() });
 
-// 🚀 RUTA PROXY: Debe ir antes que las rutas con :id
+// Ruta Proxy de streaming de la cámara Cognex (Módulo Monitor)
 router.get('/proxy-camara', lecturasController.proxyCamara);
 
 // ============================================================================
-// 🚀 MÓDULO: RECONCILIACIÓN DE INVENTARIO (Cruce de Datos)
+// 🚀 MÓDULO: AUDITORÍA DE CARGA (Reconciliación de Inventario por Excel)
+// Autorizados: Operador, Supervisor y Administrador Sistema
 // ============================================================================
 
 // 1. Ruta para subir el Excel y realizar la comparación (Cruce)
-router.post('/comparar-excel', verificarToken, upload.single('archivo_excel'), lecturasController.compararConExcel);
+router.post(
+  '/comparar-excel', 
+  verificarToken, 
+  verificarRol(['Administrador Sistema', 'Supervisor', 'Operador']), 
+  upload.single('archivo_excel'), 
+  lecturasController.compararConExcel
+);
 
-// 2. Validación masiva (Actualización de estados en BD)
-router.post('/validar-masivo', verificarToken, lecturasController.validarMasivo);
-
-// ============================================================================
-// 🚀 GESTIÓN DE ALERTAS
-// ============================================================================
-
-// Obtener alertas activas
-router.get('/alertas', verificarToken, lecturasController.getAlertas);
-
-// Resolver una alerta individual
-router.patch('/alertas/:id/resolver', verificarToken, lecturasController.resolverAlerta);
-
-// 🚀 NUEVA RUTA: Borrar todo el historial de alertas
-// Esta ruta permite la limpieza masiva solicitada para el módulo de incidencias.
-router.delete('/alertas/todas', verificarToken, lecturasController.eliminarTodasAlertas);
+// 2. VERIFICADO: Validación masiva desde el cruce de Auditoría de Excel
+router.post(
+  '/validar-masivo', 
+  verificarToken, 
+  verificarRol(['Administrador Sistema', 'Supervisor', 'Operador']), 
+  lecturasController.validarMasivo
+);
 
 // ============================================================================
-// 🚀 OPERACIONES GENERALES DE LECTURAS
+// 🚀 GESTIÓN DE ALERTAS / CENTRO DE INCIDENCIAS
 // ============================================================================
 
-// Registrar una nueva lectura (Pistola RF o Cámara)
-router.post('/', verificarToken, lecturasController.crearLectura);
+// Obtener alertas activas (Lecturas pendientes o con error)
+// 🌟 SOLUCIÓN AL LOOP: Se autoriza al 'Operador' aquí, el controlador filtrará el contenido de forma segura.
+router.get(
+  '/alertas', 
+  verificarToken, 
+  verificarRol(['Administrador Sistema', 'Supervisor', 'Operador']), 
+  lecturasController.getAlertas
+);
 
-// Obtener historial de lecturas (Paginado)
-router.get('/', verificarToken, lecturasController.getLecturas);
+// Resolver una alerta individual pasándola a estado OK (Solo Supervisor y Admin)
+router.patch(
+  '/alertas/:id/resolver', 
+  verificarToken, 
+  verificarRol(['Administrador Sistema', 'Supervisor']), 
+  lecturasController.resolverAlerta
+);
 
-// Obtener estadísticas para KPIs
-router.get('/estadisticas', verificarToken, lecturasController.estadisticas);
+// VERIFICADO: Validación masiva por selección de bloques (Checkboxes) desde el Centro de Incidencias
+router.post(
+  '/alertas/validar-masivo', 
+  verificarToken, 
+  verificarRol(['Administrador Sistema', 'Supervisor']), 
+  lecturasController.validarAlertasMasivo
+);
+
+// Validación absoluta instantánea del 100% de alertas de un solo clic (Solo Supervisor y Admin)
+router.post(
+  '/alertas/validar-todas', 
+  verificarToken, 
+  verificarRol(['Administrador Sistema', 'Supervisor']), 
+  lecturasController.validarTodasLasAlertasDB
+);
+
+// Borrado físico completo de todas las alertas del historial (Solo Supervisor y Admin)
+router.delete(
+  '/alertas/todas', 
+  verificarToken, 
+  verificarRol(['Administrador Sistema', 'Supervisor']), 
+  lecturasController.eliminarTodasAlertas
+);
 
 // ============================================================================
-// 🚀 RUTAS CON PARÁMETROS (:id)
+// 🚀 OPERACIONES GENERALES DE LECTURAS (Dashboard / Historial)
+// Autorizados: Operador, Supervisor y Administrador Sistema
 // ============================================================================
 
-// Validación manual desde el modal del Historial
-router.put('/:id/validar', verificarToken, lecturasController.validarLecturaManual);
+router.post(
+  '/', 
+  verificarToken, 
+  verificarRol(['Administrador Sistema', 'Supervisor', 'Operador']), 
+  lecturasController.crearLectura
+);
 
-// Eliminar un registro específico
-router.delete('/:id', verificarToken, lecturasController.eliminarLectura);
+router.get(
+  '/', 
+  verificarToken, 
+  verificarRol(['Administrador Sistema', 'Supervisor', 'Operador']), 
+  lecturasController.getLecturas
+);
+
+router.get(
+  '/estadisticas', 
+  verificarToken, 
+  verificarRol(['Administrador Sistema', 'Supervisor', 'Operador']), 
+  lecturasController.estadisticas
+);
+
+// ============================================================================
+// 🚀 RUTAS CON PARÁMETROS DINÁMICOS (:id)
+// Autorizados: Operador, Supervisor y Administrador Sistema
+// ============================================================================
+
+router.put(
+  '/:id/validar', 
+  verificarToken, 
+  verificarRol(['Administrador Sistema', 'Supervisor', 'Operador']), 
+  lecturasController.validarLecturaManual
+);
+
+router.delete(
+  '/:id', 
+  verificarToken, 
+  verificarRol(['Administrador Sistema', 'Supervisor', 'Operador']), 
+  lecturasController.eliminarLectura
+);
 
 module.exports = router;

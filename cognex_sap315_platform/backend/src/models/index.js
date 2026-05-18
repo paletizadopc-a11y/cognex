@@ -20,14 +20,14 @@ const Usuario = sequelize.define('usuarios', {
   
   // 🚀 CAMPOS NUEVOS PARA POLÍTICA DE SEGURIDAD (7 DÍAS)
   // Almacena la fecha exacta en la que la clave temporal dejará de ser válida.
-  password_expires_at: { 
-    type: DataTypes.DATE, 
-    allowNull: true 
+  password_expires_at: {
+    type: DataTypes.DATE,
+    allowNull: true
   },
   // Indica si el usuario debe cambiar su contraseña para que sea permanente.
-  es_password_temporal: { 
-    type: DataTypes.BOOLEAN, 
-    defaultValue: true 
+  es_password_temporal: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
   }
 }, { timestamps: false });
 
@@ -85,10 +85,29 @@ const Configuracion = sequelize.define('configuraciones', {
 }, { 
   timestamps: true,
   updatedAt: 'fecha_actualizacion',
-  createdAt: false 
+  createdAt: false
 });
 
-// Relaciones
+// ============================================================================
+// 🚀 NUEVO MODELO: LOGS DE AUDITORÍA DE USUARIOS
+// Mantiene el registro histórico redundante de nombres/emails por seguridad.
+// ============================================================================
+const AuditLog = sequelize.define('audit_logs', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  usuario_id: { type: DataTypes.INTEGER, allowNull: true },
+  usuario_nombre: { type: DataTypes.STRING(100), allowNull: true },
+  usuario_email: { type: DataTypes.STRING(100), allowNull: true },
+  accion: { type: DataTypes.STRING(100), allowNull: false },
+  modulo: { type: DataTypes.STRING(50), allowNull: false },
+  detalles: { type: DataTypes.TEXT, allowNull: true },
+  fecha_hora: { type: DataTypes.DATE, defaultValue: DataTypes.NOW }
+}, { 
+  timestamps: false 
+});
+
+// ============================================================================
+// RELACIONES DEL SISTEMA
+// ============================================================================
 Usuario.belongsTo(Rol, { foreignKey: 'rol_id', as: 'rol' });
 Rol.hasMany(Usuario, { foreignKey: 'rol_id', as: 'usuarios' });
 
@@ -96,6 +115,10 @@ Lectura.belongsTo(Usuario, { foreignKey: 'usuario_validador_id', as: 'validador'
 
 LogAlerta.belongsTo(Lectura, { foreignKey: 'lectura_id' });
 LogAlerta.belongsTo(Usuario, { foreignKey: 'resuelta_por', as: 'resolutor' });
+
+// 🚀 NUEVA RELACIÓN: Logs vinculados a la cuenta del usuario para análisis forense
+AuditLog.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
+Usuario.hasMany(AuditLog, { foreignKey: 'usuario_id', as: 'logs' });
 
 module.exports = {
   sequelize,
@@ -105,5 +128,6 @@ module.exports = {
   LogAlerta,
   ConfigCamara,
   SessionLogin,
-  Configuracion
+  Configuracion,
+  AuditLog 
 };

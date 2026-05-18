@@ -1,6 +1,9 @@
 const bcrypt = require('bcryptjs');
 const { Usuario, Rol } = require('../models');
 
+// 🚀 IMPORTACIÓN DE LA UTILIDAD DE LOGS DE AUDITORÍA
+const { registrarLog } = require('../utils/auditLogger');
+
 // Obtener todos los roles activos
 exports.getRoles = async (req, res) => {
   try {
@@ -67,6 +70,13 @@ exports.crearUsuario = async (req, res) => {
       include: [{ model: Rol, as: 'rol', attributes: ['nombre_rol'] }]
     });
 
+    // 🚀 LOG DE AUDITORÍA: Registro de creación de la cuenta
+    await registrarLog(req, 'CREAR_USUARIO', 'CONFIGURACION', {
+      usuario_creado: nombre,
+      email_creado: email.toLowerCase(),
+      rol_id: rol_id
+    });
+
     console.log(`>>> [BACKEND] 👤 Usuario creado con clave temporal: ${email}`);
     res.status(201).json({ 
       message: 'Usuario creado. La contraseña vencerá en 7 días.', 
@@ -104,6 +114,9 @@ exports.configurarPasswordNueva = async (req, res) => {
     usuario.es_password_temporal = true;
     await usuario.save();
 
+    // 🚀 LOG DE AUDITORÍA: Configuración inicial de credenciales (Se registra como sistema/anónimo si no hay sesión activa)
+    await registrarLog(req, 'CONFIGURAR_PASSWORD_INICIAL', 'AUTH', { email: email.toLowerCase() });
+
     console.log(`>>> [BACKEND] 🔑 Clave inicial configurada por el usuario: ${email}`);
     res.json({ message: 'Contraseña configurada. Vence en 7 días.', mensaje: 'Contraseña configurada. Vence en 7 días.' });
   } catch (error) {
@@ -121,7 +134,7 @@ exports.cambiarPasswordDefinitiva = async (req, res) => {
     const { email, password_actual, nueva_password } = req.body;
 
     // Buscamos al usuario incluyendo su rol para retornar el perfil completo e hidratar el frontend sin desloguear
-    const usuario = await Usuario.findOne({ 
+    const usuario = await Usuario.findOne({
       where: { email: email.toLowerCase() },
       include: [{ model: Rol, as: 'rol', attributes: ['nombre_rol', 'descripcion'] }]
     });
@@ -147,9 +160,12 @@ exports.cambiarPasswordDefinitiva = async (req, res) => {
       rol: usuario.rol
     };
 
+    // 🚀 LOG DE AUDITORÍA: El usuario pasó con éxito la barrera de los 7 días
+    await registrarLog(req, 'CAMBIO_PASSWORD_DEFINITIVA', 'PERFIL', { email: email.toLowerCase() });
+
     console.log(`>>> [BACKEND] 🔒 Contraseña definitiva establecida para: ${email}`);
-    res.json({ 
-      message: 'Contraseña actualizada a permanente con éxito.', 
+    res.json({
+      message: 'Contraseña actualizada a permanente con éxito.',
       mensaje: 'Contraseña actualizada a permanente con éxito.',
       usuario: perfilActualizado
     });
@@ -174,7 +190,8 @@ exports.editarUsuario = async (req, res) => {
 
     const updates = { nombre, email: email?.toLowerCase() || usuario.email, rol_id };
 
-    if (password && password.trim() !== '') {
+    const passwordForzada = password && password.trim() !== '';
+    if (passwordForzada) {
       const salt = await bcrypt.genSalt(10);
       updates.password_hash = await bcrypt.hash(password, salt);
       
@@ -191,6 +208,15 @@ exports.editarUsuario = async (req, res) => {
     const usuarioActualizado = await Usuario.findByPk(id, {
       attributes: { exclude: ['password_hash'] },
       include: [{ model: Rol, as: 'rol', attributes: ['nombre_rol', 'descripcion'] }]
+    });
+
+    // 🚀 LOG DE AUDITORÍA: Registro de la edición administrativa
+    await registrarLog(req, 'EDITAR_USUARIO', 'CONFIGURACION', {
+      usuario_id_modificado: id,
+      nombre_nuevo: nombre,
+      email_nuevo: email?.toLowerCase(),
+      rol_id_nuevo: rol_id,
+      password_reseteado: passwordForzada
     });
 
     console.log(`>>> [BACKEND] ✅ Usuario ${id} editado exitosamente.`);
@@ -212,6 +238,13 @@ exports.actualizarEstadoUsuario = async (req, res) => {
 
     await usuario.update({ activo });
     
+    // 🚀 LOG DE AUDITORÍA: Registro del cambio de estado (Bloqueo o Activación)
+    await registrarLog(req, 'ACTUALIZAR_ESTADO_USUARIO', 'CONFIGURACION', {
+      usuario_id_afectado: id,
+      email_afectado: usuario.email,
+      nuevo_estado: activo ? 'ACTIVO' : 'BLOQUEADO'
+    });
+
     console.log(`>>> [BACKEND] 🔄 Estado del usuario ${id} cambiado a: ${activo ? 'ACTIVO' : 'BLOQUEADO'}`);
     res.json({ mensaje: `Usuario ${activo ? 'activado' : 'bloqueado'}`, message: `Usuario ${activo ? 'activado' : 'bloqueado'}`, usuario });
   } catch (error) {
@@ -226,6 +259,13 @@ exports.eliminarUsuario = async (req, res) => {
     const { id } = req.params;
     const usuario = await Usuario.findByPk(id);
     if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado', message: 'Usuario no encontrado' });
+
+    // 🚀 LOG DE AUDITORÍA: Captura los detalles antes de la destrucción física en la BD
+    await registrarLog(req, 'ELIMINAR_USUARIO', 'CONFIGURACION', {
+      usuario_id_eliminado: id,
+      nombre_eliminado: usuario.nombre,
+      email_eliminado: usuario.email
+    });
 
     await usuario.destroy();
     

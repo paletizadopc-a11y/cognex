@@ -1,5 +1,8 @@
 const { Configuracion } = require('../models');
 
+// 🚀 IMPORTACIÓN DE LA UTILIDAD DE LOGS DE AUDITORÍA
+const { registrarLog } = require('../utils/auditLogger');
+
 /**
  * Obtiene los parámetros operativos actuales de la planta.
  */
@@ -47,6 +50,15 @@ exports.saveParametros = async (req, res) => {
     // Actualizamos el ID 1 o lo creamos si no existe
     const [config] = await Configuracion.upsert({
       id: 1,
+      umbral_confianza: p.umbralConfianza,
+      modo_operacion: p.modoOperacion,
+      intervalo_lectura: p.intervaloLectura,
+      integracion_sap: p.integracionSap,
+      auto_alertas_auditoria: p.autoAlertasAuditoria
+    });
+
+    // 🚀 LOG DE AUDITORÍA: Captura los nuevos valores operacionales establecidos en planta
+    await registrarLog(req, 'MODIFICAR_PARAMETROS_SISTEMA', 'CONFIGURACION', {
       umbral_confianza: p.umbralConfianza,
       modo_operacion: p.modoOperacion,
       intervalo_lectura: p.intervaloLectura,

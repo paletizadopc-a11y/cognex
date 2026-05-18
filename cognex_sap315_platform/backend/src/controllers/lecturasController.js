@@ -3,14 +3,12 @@ const { Op } = require('sequelize');
 const axios = require('axios');
 const xlsx = require('xlsx');
 
+// 🚀 IMPORTACIÓN DE LA UTILIDAD DE LOGS DE AUDITORÍA
+const { registrarLog } = require('../utils/auditLogger');
+
 // ============================================================================
 // SERVICIOS EXTERNOS (COGNEX)
 // ============================================================================
-
-/**
- * Actúa como puente para obtener la imagen en vivo de la cámara Cognex 
- * sorteando problemas de CORS y autenticación en el frontend.
- */
 exports.proxyCamara = async (req, res) => {
   try {
     const { COGNEX_IP, COGNEX_PORT_HMI, COGNEX_USER, COGNEX_PASS } = process.env;
@@ -39,11 +37,6 @@ exports.proxyCamara = async (req, res) => {
 // ============================================================================
 // GESTIÓN DE LECTURAS INDIVIDUALES
 // ============================================================================
-
-/**
- * Registra una nueva lectura (LPN) detectada por la cámara.
- * Implementa un cooldown de 5 segundos para evitar duplicidad.
- */
 exports.crearLectura = async (req, res) => {
   try {
     const { lpn, linea_origen } = req.body;
@@ -51,7 +44,7 @@ exports.crearLectura = async (req, res) => {
       return res.status(400).json({ error: 'Faltan campos obligatorios (lpn, linea_origen)' });
     }
 
-    const limiteTiempo = new Date(new Date() - 5000); 
+    const limiteTiempo = new Date(new Date() - 5000);
     const lecturaDuplicada = await Lectura.findOne({
       where: {
         lpn: lpn,
@@ -70,15 +63,16 @@ exports.crearLectura = async (req, res) => {
       fecha_hora: new Date()
     });
 
+    if (req.usuario) {
+      await registrarLog(req, 'CAPTURA_LPN_MANUAL', 'MONITOR', { lpn, linea_origen });
+    }
+
     res.status(201).json(nuevaLectura);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-/**
- * Obtiene el listado de lecturas con paginación para el módulo de histórico.
- */
 exports.getLecturas = async (req, res) => {
   try {
     const { pagina = 1, limite = 20 } = req.query;
@@ -99,9 +93,6 @@ exports.getLecturas = async (req, res) => {
   }
 };
 
-/**
- * Permite validar manualmente una lectura o corregir su LPN.
- */
 exports.validarLecturaManual = async (req, res) => {
   try {
     const { id } = req.params;
@@ -109,9 +100,17 @@ exports.validarLecturaManual = async (req, res) => {
     const lectura = await Lectura.findByPk(id);
     if (!lectura) return res.status(404).json({ error: 'Lectura no encontrada' });
 
+    const lpnAnterior = lectura.lpn;
     lectura.lpn = lpn_corregido;
     lectura.estado_sap = 'ok';
     await lectura.save();
+
+    await registrarLog(req, 'VALIDAR_LECTURA_MANUAL', 'HISTORICO', { 
+      id, 
+      lpn_anterior: lpnAnterior, 
+      lpn_nuevo: lpn_corregido 
+    });
+
     res.json(lectura);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -121,16 +120,21 @@ exports.validarLecturaManual = async (req, res) => {
 // ============================================================================
 // MÓDULO DE ALERTAS E INCIDENCIAS
 // ============================================================================
-
-/**
- * Obtiene las lecturas que requieren atención (pendientes o con error).
- */
 exports.getAlertas = async (req, res) => {
   try {
+    // 🚀 CONTROL INTEGRAL: Evaluamos el rol normalizado del operador en planta
+    const rolUsuario = (req.usuario?.rol?.nombre_rol || req.usuario?.rol || '').trim().toLowerCase();
+    
+    if (rolUsuario === 'operador') {
+      // Retorna una lista vacía de forma limpia. Evita caídas del Header y rotación de bucles.
+      return res.json({ alertas: [] });
+    }
+
+    // Supervisores y Administradores cargan las discrepancias reales de Softys
     const alertas = await Lectura.findAll({
       where: { estado_sap: ['error', 'pendiente'] },
       order: [['fecha_hora', 'DESC']],
-      limit: 100
+      limit: 1000
     });
     res.json({ alertas });
   } catch (error) {
@@ -138,9 +142,6 @@ exports.getAlertas = async (req, res) => {
   }
 };
 
-/**
- * Resuelve una incidencia validándola físicamente.
- */
 exports.resolverAlerta = async (req, res) => {
   try {
     const { id } = req.params;
@@ -149,6 +150,9 @@ exports.resolverAlerta = async (req, res) => {
 
     lectura.estado_sap = 'ok';
     await lectura.save();
+
+    await registrarLog(req, 'RESOLVER_ALERTA_INDIVIDUAL', 'ALERTAS', { id, lpn: lectura.lpn });
+
     res.json({ mensaje: 'Incidencia resuelta satisfactoriamente' });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -156,27 +160,95 @@ exports.resolverAlerta = async (req, res) => {
 };
 
 /**
- * Elimina un registro de lectura individual.
+ * ⚡ 1. VALIDACIÓN MASIVA DE ALERTAS POR SELECCIÓN DE CHECKBOXES
+ * Resuelve múltiples discrepancias seleccionadas directamente en la interfaz.
  */
+exports.validarAlertasMasivo = async (req, res) => {
+  try {
+    const { alerta_ids } = req.body;
+
+    if (!alerta_ids || !Array.isArray(alerta_ids) || alerta_ids.length === 0) {
+      return res.status(400).json({ 
+        error: 'No se proporcionaron identificadores de alertas válidos.',
+        message: 'No se proporcionaron identificadores de alertas válidos.' 
+      });
+    }
+
+    await Lectura.update(
+      { estado_sap: 'ok' },
+      { where: { id: alerta_ids } }
+    );
+
+    await registrarLog(req, 'VALIDAR_ALERTAS_MASIVO', 'ALERTAS', { 
+      cantidad_seleccionada: alerta_ids.length 
+    });
+
+    console.log(`>>> [BACKEND] ⚡ Se validaron masivamente ${alerta_ids.length} alertas en el sistema.`);
+    res.json({ 
+      mensaje: `Se validaron ${alerta_ids.length} alertas correctamente.`,
+      message: `Se validaron ${alerta_ids.length} alertas correctamente.`,
+      success: true 
+    });
+  } catch (error) {
+    console.error(">>> [BACKEND] ❌ Error crítico en validarAlertasMasivo:", error.message);
+    res.status(500).json({ 
+      error: 'Error interno al procesar la validación masiva.', 
+      message: error.message 
+    });
+  }
+};
+
+exports.validarTodasLasAlertasDB = async (req, res) => {
+  try {
+    const cantidadModificada = await Lectura.update(
+      { estado_sap: 'ok' },
+      { where: { estado_sap: ['error', 'pendiente'] } }
+    );
+
+    await registrarLog(req, 'VALIDAR_TODO_EL_SISTEMA', 'ALERTAS', { 
+      cantidad_afectados: cantidadModificada[0] 
+    });
+
+    console.log(`>>> [BACKEND] 🚀 VALIDACIÓN TOTAL: Se cerraron ${cantidadModificada[0]} incidencias de golpe.`);
+    res.json({ 
+      mensaje: `Sincronización completa. Se validaron las ${cantidadModificada[0]} incidencias del sistema de forma automática.`,
+      message: `Sincronización completa. Se validaron las ${cantidadModificada[0]} incidencias del sistema de forma automática.`,
+      success: true,
+      afectados: cantidadModificada[0]
+    });
+  } catch (error) {
+    console.error(">>> [BACKEND] ❌ Error crítico en validación absoluta:", error.message);
+    res.status(500).json({ 
+      error: 'Error interno en la base de datos.', 
+      message: error.message 
+    });
+  }
+};
+
 exports.eliminarLectura = async (req, res) => {
   try {
     const { id } = req.params;
-    await Lectura.destroy({ where: { id } });
+    const lectura = await Lectura.findByPk(id);
+    
+    if (lectura) {
+      await registrarLog(req, 'ELIMINAR_LECTURA_INDIVIDUAL', 'LECTURAS', { id, lpn: lectura.lpn });
+      await lectura.destroy();
+    }
+
     res.json({ mensaje: 'Registro eliminado' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-/**
- * Borrar todas las incidencias (Alertas) del historial.
- */
 exports.eliminarTodasAlertas = async (req, res) => {
   try {
     await Lectura.destroy({
       where: {},
       truncate: false 
     });
+
+    await registrarLog(req, 'VACIAR_CENTRO_INCIDENCIAS', 'ALERTAS', 'Se eliminó por completo el historial del turno');
 
     res.json({ mensaje: "Todas las incidencias han sido eliminadas permanentemente." });
   } catch (error) {
@@ -185,9 +257,6 @@ exports.eliminarTodasAlertas = async (req, res) => {
   }
 };
 
-/**
- * Métricas para el Dashboard principal.
- */
 exports.estadisticas = async (req, res) => {
   try {
     const total = await Lectura.count();
@@ -203,11 +272,6 @@ exports.estadisticas = async (req, res) => {
 // ============================================================================
 // MÓDULO: AUDITORÍA EXCEL SOFTYS (VERSIÓN ROBUSTA)
 // ============================================================================
-
-/**
- * Cruza el Excel de planificación con la BD.
- * Identifica LPNs existentes en cualquier estado para validación automática.
- */
 exports.compararConExcel = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Archivo no recibido.' });
@@ -285,8 +349,8 @@ exports.compararConExcel = async (req, res) => {
 };
 
 /**
- * 🚀 SOLUCIÓN AL ERROR 500: Validación masiva con manejo de duplicidad.
- * Sincroniza los matches y crea alertas para los faltantes ignorando duplicados existentes.
+ * ⚡ 2. VERIFICADO: VALIDACIÓN MASIVA DEL FLUJO DE AUDITORÍA EXCEL
+ * Procesa la carga e inserta faltantes como incidencias de tipo 'error'.
  */
 exports.validarMasivo = async (req, res) => {
   try {
@@ -295,19 +359,13 @@ exports.validarMasivo = async (req, res) => {
       return res.status(400).json({ error: 'Detalle no recibido.' });
     }
     
-    // 1. Validar los que hicieron match (Pasar a 'ok')
     const lpnsOk = resultados.filter(r => r.estado === 'Match Perfecto').map(r => r.lpn);
     if (lpnsOk.length > 0) {
       await Lectura.update({ estado_sap: 'ok' }, { where: { lpn: lpnsOk } });
     }
 
-    // 2. Insertar los faltantes con protección de duplicidad (ignoreDuplicates: true)
     const noDet = resultados.filter(r => r.estado === 'No Detectado');
     if (noDet.length > 0) {
-      /**
-       * Se utiliza ignoreDuplicates para evitar errores de llave única (PK/Unique)
-       * si un LPN ya existe en la base de datos de una sesión previa.
-       */
       await Lectura.bulkCreate(noDet.map(f => ({
         lpn: f.lpn, 
         linea_origen: 'AUDITORIA_SISTEMA', 
@@ -318,6 +376,12 @@ exports.validarMasivo = async (req, res) => {
         ignoreDuplicates: true 
       }); 
     }
+
+    // REGISTRO DE AUDITORÍA DE PARÁMETROS MASIVOS
+    await registrarLog(req, 'SINCRONIZAR_AUDITORIA_EXCEL', 'AUDITORIA_CARGA', {
+      validados: lpnsOk.length,
+      alertas_creadas: noDet.length
+    });
 
     res.json({ 
       mensaje: `Sincronización terminada. ${lpnsOk.length} registros validados.`,

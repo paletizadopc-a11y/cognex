@@ -9,10 +9,14 @@ const path = require('path');
 
 const { sequelize } = require('./models');
 
+// Carga de enrutadores del sistema
 const authRoutes = require('./routes/auth');
 const lecturasRoutes = require('./routes/lecturas');
 const usuariosRoutes = require('./routes/usuariosRoutes');
 const configuracionRoutes = require('./routes/configuracion');
+
+// 🚀 SOLUCIÓN: Importamos el nuevo archivo de rutas de logs de auditoría
+const logsRoutes = require('./routes/logsRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,7 +26,7 @@ const frontendPath = path.resolve(__dirname, '../../frontend/dist');
 
 console.log('📁 Frontend path:', frontendPath);
 
-// Seguridad (modo LAN/local)
+// Seguridad (modo LAN / Planta local)
 app.use(
   helmet({
     crossOriginOpenerPolicy: false,
@@ -32,13 +36,13 @@ app.use(
   })
 );
 
-// CORS
+// CORS de acceso global para periféricos e interfaces
 app.use(cors({
   origin: '*',
   credentials: true
 }));
 
-// Rate limiting
+// Políticas contra saturación (Rate limiting)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -51,20 +55,23 @@ const apiLimiter = rateLimit({
   message: 'Límite de peticiones excedido'
 });
 
-// Logs
+// Logs operacionales en consola
 app.use(morgan(process.env.LOG_LEVEL || 'dev'));
 
-// Body parser
+// Body parsers configurados para permitir transferencias de auditorías Excel pesadas
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Archivos estáticos React
+// Servidor de distribución de archivos estáticos de React
 app.use(express.static(frontendPath));
 
-// Prefijo API
+// Prefijo dinámico de la API
 const API_PREFIX = `/api/${process.env.API_VERSION || 'v1'}`;
 
-// API routes
+// ============================================================================
+// REGISTRO DE RUTAS DE LA API (API ROUTES)
+// ============================================================================
+
 app.use(
   `${API_PREFIX}/auth`,
   authLimiter,
@@ -88,7 +95,18 @@ app.use(
   configuracionRoutes
 );
 
-// Health check
+// 🚀 SOLUCIÓN: Montamos las rutas de auditoría bajo el prefijo raíz correlativo a Axios
+app.use(
+  `${API_PREFIX}`,
+  apiLimiter,
+  logsRoutes
+);
+
+// ============================================================================
+// VERIFICACIONES Y FALLBACKS
+// ============================================================================
+
+// Health check para monitores de infraestructura
 app.get('/health', (req, res) => {
   res.json({
     status: 'OK',
@@ -96,28 +114,28 @@ app.get('/health', (req, res) => {
   });
 });
 
-// React fallback
+// React Router HTML5 History API Fallback
 app.use((req, res) => {
   res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
-// Inicio servidor
+// Inicialización de conexiones físicas y arranque del demonio HTTP
 sequelize.sync()
   .then(() => {
 
-    console.log('✅ Base de datos conectada y sincronizada');
+    console.log('✅ Base de datos conectada y sincronizada de forma exitosa');
 
     app.listen(PORT, '0.0.0.0', () => {
 
       console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
-      console.log(`🌐 Red local: http://10.3.33.48:${PORT}`);
-      console.log(`📡 API activa en ${API_PREFIX}`);
+      console.log(`🌐 Red local industrial: http://10.3.33.48:${PORT}`);
+      console.log(`📡 API activa en el prefijo: ${API_PREFIX}`);
 
     });
 
   })
   .catch(err => {
 
-    console.error('❌ Error conectando a la base de datos:', err);
+    console.error('❌ Error crítico al conectar la base de datos relacional:', err);
 
   });

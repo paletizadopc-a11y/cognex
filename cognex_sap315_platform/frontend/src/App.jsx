@@ -18,8 +18,11 @@ import { ConfiguracionModule } from './modules/configuracion/ConfiguracionModule
 // Módulo de Auditoría de Carga (Reconciliación inteligente)
 import AuditoriaModule from './modules/auditoria/AuditoriaModule';
 
-// 🚀 NUEVO IMPORT: Módulo exclusivo de Perfil de Usuario Separado
+// Módulo exclusivo de Perfil de Usuario Separado
 import { PerfilModule } from './modules/perfil/PerfilModule';
+
+// 🚀 NUEVO IMPORT: Panel de Logs de Auditoría para traza de operadores
+import { LogsModule } from './modules/logs/LogsModule';
 
 /**
  * 🔒 WRAPPER DE SEGURIDAD: RutaProtegida
@@ -87,8 +90,11 @@ function App() {
               {/* Centro de Incidencias, Alertas Críticas y Borrado de Historial */}
               <Route path="/alertas" element={<AlertasModule />} />
 
-              {/* 🚀 NUEVA RUTA: Espacio Privado del Operador (Cambio de clave de 7 días y datos personales) */}
+              {/* Espacio Privado del Operador (Cambio de clave de 7 días y datos personales) */}
               <Route path="/perfil" element={<PerfilModule />} />
+
+              {/* 🚀 NUEVA RUTA PRIVADA: Panel Histórico de Logs de Auditoría */}
+              <Route path="/logs" element={<LogsModule />} />
 
               {/* Gestión Administrativa de Roles, Usuarios y Parámetros del Sistema */}
               <Route path="/configuracion" element={<ConfiguracionModule />} />
