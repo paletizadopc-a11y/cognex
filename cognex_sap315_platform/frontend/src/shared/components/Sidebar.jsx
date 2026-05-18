@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 
 export const Sidebar = () => {
-  const { logout, user } = useAuth();
+  const { logout, usuario } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -25,9 +25,8 @@ export const Sidebar = () => {
     }
   };
 
-  const rolActual = user?.rol?.toLowerCase() || 'operador';
-
-  const menuItemsRaw = [
+  // Ítems del menú de navegación de la plataforma SAP 315
+  const menuItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/lecturas', icon: ListOrdered, label: 'Lecturas' },
     { path: '/monitor', icon: Camera, label: 'Monitor en Vivo' },
@@ -36,12 +35,10 @@ export const Sidebar = () => {
     { path: '/configuracion', icon: Settings, label: 'Configuración' },
   ];
 
-  const menuItems = menuItemsRaw; 
-
   return (
-    <aside className="w-64 shrink-0 h-screen bg-[#2C0140] border-r border-white/10 flex flex-col sticky top-0 z-50 shadow-2xl">
+    <aside className="w-64 shrink-0 h-screen bg-[#2C0140] border-r border-white/10 flex flex-col sticky top-0 z-50 shadow-2xl font-hanken">
       
-      {/* Brand / Logo */}
+      {/* Brand / Logo Corporativo */}
       <div className="p-6">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-[#4A008B] rounded-xl flex items-center justify-center shadow-lg shadow-[#4A008B]/30 border border-white/10">
@@ -54,7 +51,7 @@ export const Sidebar = () => {
         </div>
       </div>
 
-      {/* Navegación */}
+      {/* Navegación Dinámica */}
       <nav className="flex-1 px-4 overflow-y-auto py-4 custom-scrollbar">
         <ul className="space-y-2">
           {menuItems.map((item) => {
@@ -78,11 +75,16 @@ export const Sidebar = () => {
         </ul>
       </nav>
 
-      {/* Perfil de Usuario y Logout */}
+      {/* 🚀 Sección de Usuario Sincronizada */}
       <div className="p-4 border-t border-white/10 bg-black/20">
         <div className="px-4 mb-4">
-          <p className="text-sm font-bold text-white truncate">{user?.nombre || 'CTO User'}</p>
-          <p className="text-xs text-[#0AE8C6] uppercase tracking-wider font-bold">{user?.rol || 'Administrador'}</p>
+          {/* Interpolación real del estado 'usuario' */}
+          <p className="text-sm font-bold text-white truncate">
+            {usuario?.nombre || 'Usuario SAP'}
+          </p>
+          <p className="text-xs text-[#0AE8C6] uppercase tracking-wider font-bold mt-0.5">
+            {usuario?.rol?.nombre_rol || 'Operador'}
+          </p>
         </div>
 
         <button
@@ -96,3 +98,5 @@ export const Sidebar = () => {
     </aside>
   );
 };
+
+export default Sidebar;
